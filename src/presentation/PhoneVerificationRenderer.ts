@@ -248,7 +248,8 @@ export class PhoneVerificationRenderer {
         (window as any).AntinnaEngine.showGeoVerification();
     } catch (error: any) {
         console.error("OTP Verification failed", error);
-        UIManager.showToast("Invalid OTP code", "error");
+        const errorMsg = error.message || error.toString();
+        UIManager.showToast(`OTP Verification failed: ${errorMsg}`, "error");
     } finally {
         this.setBtnLoading('antinna-verify-otp-btn', false);
     }

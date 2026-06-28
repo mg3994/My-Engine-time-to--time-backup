@@ -513,6 +513,16 @@ export class App {
           }
       }
       loginModal.classList.add('active');
+
+      // Start polling for login success
+      const checkLogin = setInterval(() => {
+          if ((window as any).isLoggedIn) {
+              clearInterval(checkLogin);
+              loginModal?.classList.remove('active');
+              // Automatically proceed to next step
+              this.startCheckout();
+          }
+      }, 1000);
   }
 }
 

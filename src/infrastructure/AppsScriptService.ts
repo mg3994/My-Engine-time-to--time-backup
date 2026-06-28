@@ -27,9 +27,9 @@ export class AppsScriptService {
     };
 
     try {
-      const response = await fetch(this.url, {
+      await fetch(this.url, {
         method: 'POST',
-        mode: 'no-cors', // Apps Script often requires no-cors for simple POSTs
+        mode: 'no-cors',
         headers: {
           'Content-Type': 'application/json'
         },

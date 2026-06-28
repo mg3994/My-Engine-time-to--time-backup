@@ -15,13 +15,13 @@ export class OrderSummaryRenderer {
       UIManager.injectModalStyles();
     }
 
-    const order = this.cartManager.getOrder();
-    const itemsHtml = order.orderedItem.map(item => {
-        const { price, currency } = SchemaExtractor.extractPrice(item.orderedItem.offers);
+    const order = this.cartManager.getOrder() as any;
+    const itemsHtml = SchemaExtractor.getArray(order.orderedItem).map((item: any) => {
+        const { price, currency } = SchemaExtractor.extractPrice(item.orderedItem?.offers);
         return `
             <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee; font-size:0.9rem;">
-                <span style="flex:1;">${item.orderedItem.name} <b>x${item.orderQuantity}</b></span>
-                <span style="font-weight:700;">${currency} ${parseFloat(price) * item.orderQuantity}</span>
+                <span style="flex:1;">${SchemaExtractor.getFirst(item.orderedItem?.name)} <b>x${item.orderQuantity || 1}</b></span>
+                <span style="font-weight:700;">${currency} ${parseFloat(price) * (item.orderQuantity || 1)}</span>
             </div>
         `;
     }).join('');
@@ -47,7 +47,7 @@ export class OrderSummaryRenderer {
 
         <div style="display:flex; justify-content:space-between; font-weight:900; font-size:1.2rem; margin:20px 0;">
             <span>Grand Total</span>
-            <span>${order.priceCurrency} ${order.totalPrice}</span>
+            <span>${order.priceCurrency || 'INR'} ${order.totalPrice || 0}</span>
         </div>
 
         <div id="google-pay-button-container" style="display:flex; justify-content:center; margin-top:20px;"></div>

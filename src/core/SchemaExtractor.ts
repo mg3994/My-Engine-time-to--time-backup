@@ -1,4 +1,15 @@
 export class SchemaExtractor {
+  static getFirst<T>(val: T | T[] | undefined): T | undefined {
+    if (Array.isArray(val)) return val[0];
+    return val;
+  }
+
+  static getArray<T>(val: T | T[] | undefined): T[] {
+    if (val === undefined || val === null) return [];
+    if (Array.isArray(val)) return val;
+    return [val];
+  }
+
   static decodeEntities(text: string): string {
     if (!text) return "";
     const textarea = document.createElement("textarea");
@@ -41,14 +52,14 @@ export class SchemaExtractor {
 
   static findMatchingVariant(parent: any, selectedAttributes: Record<string, string>, lastClickedAttr: string | null = null): any {
     if (!parent) return null;
-    const variants = parent.hasVariant || [parent];
+    const variants = this.getArray(parent.hasVariant).length > 0 ? this.getArray(parent.hasVariant) : [parent];
 
     let match = variants.find((v: any) =>
-      Object.entries(selectedAttributes).every(([k, val]) => String(v[k]) === String(val))
+      Object.entries(selectedAttributes).every(([k, val]) => String(this.getFirst(v[k])) === String(val))
     );
 
     if (!match && lastClickedAttr) {
-      match = variants.find((v: any) => String(v[lastClickedAttr]) === String(selectedAttributes[lastClickedAttr]));
+      match = variants.find((v: any) => String(this.getFirst(v[lastClickedAttr])) === String(selectedAttributes[lastClickedAttr]));
     }
 
     return match || variants[0];
@@ -59,28 +70,36 @@ export class SchemaExtractor {
   }
 
   static findMatchingServicePackage(parent: any, packageName: string): any {
-      if (!parent?.hasOfferCatalog?.itemListElement) return null;
+      const catalogs = this.getArray(parent?.hasOfferCatalog);
+      if (catalogs.length === 0) return null;
+
       const normalizedSearch = this.normalizeName(packageName);
 
-      return parent.hasOfferCatalog.itemListElement.find((off: any) => {
-          const item = off.itemOffered || off;
-          const name = item.name || off.name;
-          return this.normalizeName(name) === normalizedSearch;
-      });
+      for (const catalog of catalogs) {
+          const elements = this.getArray(catalog.itemListElement);
+          const found = elements.find((off: any) => {
+              const item = off.itemOffered || off;
+              const name = this.getFirst(item.name) || this.getFirst(off.name);
+              return this.normalizeName(name as string) === normalizedSearch;
+          });
+          if (found) return found;
+      }
+      return null;
   }
 
   static findAllCatalogs(obj: any, results: any[] = []): any[] {
       if (!obj || typeof obj !== 'object') return results;
 
       if (obj.hasOfferCatalog) {
-          results.push(obj.hasOfferCatalog);
+          this.getArray(obj.hasOfferCatalog).forEach(cat => results.push(cat));
       }
 
       // Recursive search
       if (Array.isArray(obj)) {
           obj.forEach(item => this.findAllCatalogs(item, results));
       } else {
-          Object.values(obj).forEach(val => {
+          Object.entries(obj).forEach(([key, val]) => {
+              if (key === 'hasOfferCatalog') return; // already handled
               if (val && typeof val === 'object') {
                   this.findAllCatalogs(val, results);
               }
@@ -91,17 +110,29 @@ export class SchemaExtractor {
   }
 
   static extractPrice(offer: any): { price: string, currency: string } {
-      if (!offer) return { price: "0", currency: "INR" };
+      const off = Array.isArray(offer) ? offer[0] : offer;
+      if (!off) return { price: "0", currency: "INR" };
 
-      const price = offer.price || offer.itemOffered?.offers?.price || offer.offers?.price || "0";
-      const currency = offer.priceCurrency || offer.itemOffered?.offers?.priceCurrency || offer.offers?.priceCurrency || "INR";
+      const price = this.getFirst(off.price) ||
+                    this.getFirst(this.getArray(off.itemOffered)[0]?.offers?.price) ||
+                    this.getFirst(this.getArray(off.offers)[0]?.price) || "0";
+
+      const currency = this.getFirst(off.priceCurrency) ||
+                       this.getFirst(this.getArray(off.itemOffered)[0]?.offers?.priceCurrency) ||
+                       this.getFirst(this.getArray(off.offers)[0]?.priceCurrency) || "INR";
 
       return { price: String(price), currency: String(currency) };
   }
 
   static extractAvailability(offer: any): string {
-      if (!offer) return "https://schema.org/InStock";
-      const av = offer.availability || offer.itemOffered?.offers?.availability || offer.offers?.availability || "https://schema.org/InStock";
-      return String(av);
+      const off = Array.isArray(offer) ? offer[0] : offer;
+      if (!off) return "https://schema.org/InStock";
+
+      const av = this.getFirst(off.availability) ||
+                 this.getFirst(this.getArray(off.itemOffered)[0]?.offers?.availability) ||
+                 this.getFirst(this.getArray(off.offers)[0]?.availability) || "https://schema.org/InStock";
+
+      // If availability is an object with @id, use that, otherwise stringify
+      return (av as any)?.["@id"] || String(av);
   }
 }

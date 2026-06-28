@@ -69,10 +69,11 @@ export class CartRenderer {
         `;
     }
 
-    const order = this.cartManager.getOrder();
-    list.innerHTML = order.orderedItem.map((item, idx) => {
-      const isUnavailable = (item as any).isUnavailable;
-      const availability = SchemaExtractor.extractAvailability(item.orderedItem.offers);
+    const order = this.cartManager.getOrder() as any;
+    const orderedItems = SchemaExtractor.getArray(order.orderedItem);
+    list.innerHTML = orderedItems.map((item: any, idx: number) => {
+      const isUnavailable = item.isUnavailable;
+      const availability = SchemaExtractor.extractAvailability(item.orderedItem?.offers);
       const isOutOfStock = availability === "https://schema.org/OutOfStock" || availability === "https://schema.org/SoldOut";
 
       const isOrderable = !isUnavailable && !isOutOfStock;
@@ -82,18 +83,18 @@ export class CartRenderer {
       if (isUnavailable) statusText = '<div style="color:red; font-size:0.7rem; font-weight:800;">Currently Unavailable</div>';
       else if (isOutOfStock) statusText = '<div style="color:orange; font-size:0.7rem; font-weight:800;">Out of Stock</div>';
 
-      const { price, currency } = SchemaExtractor.extractPrice(item.orderedItem.offers);
+      const { price, currency } = SchemaExtractor.extractPrice(item.orderedItem?.offers);
 
       return `
         <div style="display:flex; gap:15px; padding:15px; border-bottom:1px solid rgba(0,0,0,0.05); align-items:center; opacity:${opacity};">
            <img src="${this.getItemImage(item.orderedItem)}" style="width:60px; height:60px; border-radius:10px; object-fit:cover;"/>
            <div style="flex:1;">
-              <div style="font-weight:700;font-size:0.9rem;">${item.orderedItem.name}</div>
+              <div style="font-weight:700;font-size:0.9rem;">${SchemaExtractor.getFirst(item.orderedItem?.name)}</div>
               ${statusText}
               <div style="color:var(--accent); font-weight:800; font-size:0.85rem; margin-top:4px;">${currency} ${price}</div>
               <div style="display:flex; align-items:center; gap:12px; margin-top:10px;">
                  <button class="qty-btn" style="width:24px; height:24px; font-size:0.8rem;" ${!isOrderable ? 'disabled' : ''} onclick="CartManager.updateQty(${idx},-1); CartRenderer.showModal();">-</button>
-                 <span style="font-weight:800;">${item.orderQuantity}</span>
+                 <span style="font-weight:800;">${item.orderQuantity || 1}</span>
                  <button class="qty-btn" style="width:24px; height:24px; font-size:0.8rem;" ${!isOrderable ? 'disabled' : ''} onclick="CartManager.updateQty(${idx},1); CartRenderer.showModal();">+</button>
               </div>
            </div>
@@ -103,7 +104,7 @@ export class CartRenderer {
     }).join("") || '<div style="text-align:center; padding:50px; opacity:0.5; font-weight:700;">Bag is empty</div>';
 
     const totalEl = UIManager.el("cart-total-price");
-    if (totalEl) totalEl.textContent = `${order.priceCurrency} ${order.totalPrice}`;
+    if (totalEl) totalEl.textContent = `${order.priceCurrency || 'INR'} ${order.totalPrice || 0}`;
 
     backdrop?.classList.add("active");
     drawer?.classList.add("active");

@@ -62,7 +62,7 @@ export class LocationRenderer {
             btn?.classList.remove('loading');
         }
       },
-      (err) => {
+      (_err) => {
         UIManager.showToast("Location access denied", "error");
         btn?.classList.remove('loading');
       }

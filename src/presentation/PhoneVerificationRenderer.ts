@@ -132,7 +132,7 @@ export class PhoneVerificationRenderer {
           try {
             // Importing from CDN within the script might be tricky if not pre-loaded.
             // Assuming Firebase Auth JS is already available via the auth-engine script.
-            const { RecaptchaVerifier } = (window as any).firebaseAuthInternal || {};
+            // const { RecaptchaVerifier } = (window as any).firebaseAuthInternal || {};
             // Fallback: if we can't find RecaptchaVerifier on window, we might need the user to have it.
             // Typically it's available if firebase-auth.js is loaded.
 
@@ -153,7 +153,7 @@ export class PhoneVerificationRenderer {
 
       UIManager.setHtml('antinna-resend-container', `Didn't receive code? <button id="antinna-resend-btn" disabled style="background:none; border:none; color:var(--accent); font-weight:700; cursor:pointer; opacity:0.5;">Resend (<span id="antinna-countdown">60</span>s)</button>`);
 
-      const btn = UIManager.el<HTMLButtonElement>('antinna-resend-btn');
+      // const btn = UIManager.el<HTMLButtonElement>('antinna-resend-btn');
       const countEl = UIManager.el('antinna-countdown');
 
       this.resendTimer = setInterval(() => {

@@ -1,8 +1,8 @@
-import { Order, OrderItem, Product, Service, Organization, Offer } from '../types/schema';
+import { Order, Product, Service, Organization } from '../types/schema';
 import { SchemaExtractor } from './SchemaExtractor';
 
 export class CartManager {
-  private order: Order;
+  private order: Order & { totalPrice?: number; priceCurrency?: string };
   private storageKey = "antinna_cart_order";
 
   constructor() {
@@ -11,7 +11,7 @@ export class CartManager {
       orderedItem: [],
       totalPrice: 0,
       priceCurrency: "INR",
-    };
+    } as any;
     this.deduplicate();
   }
 
@@ -33,8 +33,9 @@ export class CartManager {
   private deduplicate(): void {
       const uniqueItems: Record<string, any> = {};
       const newOrderedItems: any[] = [];
+      const orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
 
-      this.order.orderedItem.forEach((item: any) => {
+      orderedItems.forEach((item: any) => {
           const key = item.itemKey || this.generateItemKey(item.orderedItem, item._selectedVariants);
           if (uniqueItems[key]) {
               uniqueItems[key].orderQuantity += item.orderQuantity;
@@ -50,10 +51,11 @@ export class CartManager {
   }
 
   private calculateTotal(): void {
-    this.order.totalPrice = this.order.orderedItem.reduce((sum, item) => {
+    const orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
+    this.order.totalPrice = orderedItems.reduce((sum: number, item: any) => {
       if (!this.isItemOrderable(item)) return sum;
       const { price } = SchemaExtractor.extractPrice(item.orderedItem.offers);
-      return sum + (parseFloat(price) * item.orderQuantity);
+      return sum + (parseFloat(price) * (item.orderQuantity || 1));
     }, 0);
   }
 
@@ -70,18 +72,19 @@ export class CartManager {
         return;
     }
 
-    if (!item.url) {
+    if (!SchemaExtractor.getFirst(item.url)) {
         item.url = window.location.href.split('?')[0].split('#')[0];
     }
 
     const itemKey = this.generateItemKey(item, selectedVariants);
+    const orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
 
-    const existing = this.order.orderedItem.find(
-      (oi) => (oi as any).itemKey === itemKey
+    const existing = orderedItems.find(
+      (oi: any) => oi.itemKey === itemKey
     );
 
     if (existing) {
-      existing.orderQuantity++;
+      (existing as any).orderQuantity = ((existing as any).orderQuantity || 0) + 1;
     } else {
       const specs: any = {};
       const fields = [
@@ -95,7 +98,7 @@ export class CartManager {
 
       const itemCopy = JSON.parse(JSON.stringify(item));
 
-      this.order.orderedItem.push({
+      orderedItems.push({
         "@type": "OrderItem",
         orderedItem: {
           ...itemCopy,
@@ -106,19 +109,20 @@ export class CartManager {
         seller: seller ? JSON.parse(JSON.stringify(seller)) : undefined,
         itemKey: itemKey
       } as any);
+      this.order.orderedItem = orderedItems;
     }
     this.saveToStorage();
   }
 
   private generateItemKey(item: Product | Service | any, variants?: Record<string, string>): string {
-    let url = item.url || '';
+    let url = SchemaExtractor.getFirst(item.url) || '';
     if (url.includes('?')) url = url.split('?')[0];
     if (url.includes('#')) url = url.split('#')[0];
     url = url.toLowerCase().replace(/\/$/, "");
 
-    const type = item["@type"] || "Product";
-    const name = item.name || '';
-    const sku = item.sku || '';
+    const type = SchemaExtractor.getFirst(item["@type"]) || "Product";
+    const name = SchemaExtractor.getFirst(item.name) || '';
+    const sku = SchemaExtractor.getFirst(item.sku) || '';
 
     let variantString = '';
     if (variants) {
@@ -130,16 +134,18 @@ export class CartManager {
   }
 
   removeItem(index: number): void {
-    const item = this.order.orderedItem[index];
-    if (!item) return;
-    this.order.orderedItem.splice(index, 1);
+    const orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
+    if (index < 0 || index >= orderedItems.length) return;
+    orderedItems.splice(index, 1);
+    this.order.orderedItem = orderedItems;
     this.saveToStorage();
   }
 
   updateQty(index: number, delta: number): void {
-    const item = this.order.orderedItem[index];
+    const orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
+    const item = orderedItems[index] as any;
     if (!item) return;
-    item.orderQuantity += delta;
+    item.orderQuantity = (item.orderQuantity || 0) + delta;
     if (item.orderQuantity <= 0) {
       this.removeItem(index);
     } else {
@@ -148,7 +154,8 @@ export class CartManager {
   }
 
   updateItemDetails(index: number, freshBaseData: any | null): void {
-    const item = this.order.orderedItem[index] as any;
+    const orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
+    const item = orderedItems[index] as any;
     if (!item) return;
 
     if (!freshBaseData) {
@@ -184,9 +191,9 @@ export class CartManager {
               }
           }
 
-          const sourceId = source.sku || source.identifier || source.name;
-          const cartId = cartItem.sku || cartItem.identifier || cartItem.name;
-          if (source["@type"] === cartItem["@type"] && sourceId === cartId) {
+          const sourceId = SchemaExtractor.getFirst(source.sku) || SchemaExtractor.getFirst(source.identifier) || SchemaExtractor.getFirst(source.name);
+          const cartId = SchemaExtractor.getFirst(cartItem.sku) || SchemaExtractor.getFirst(cartItem.identifier) || SchemaExtractor.getFirst(cartItem.name);
+          if (SchemaExtractor.getFirst(source["@type"]) === SchemaExtractor.getFirst(cartItem["@type"]) && sourceId === cartId) {
               freshMatch = source;
               break;
           }
@@ -218,7 +225,8 @@ export class CartManager {
   }
 
   getTotalQuantity(): number {
-    return this.order.orderedItem.reduce((sum, item) => sum + item.orderQuantity, 0);
+    const orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
+    return orderedItems.reduce((sum: number, item: any) => sum + (item.orderQuantity || 0), 0);
   }
 
   clear(): void {

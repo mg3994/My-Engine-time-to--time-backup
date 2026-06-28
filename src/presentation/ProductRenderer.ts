@@ -14,27 +14,31 @@ export class ProductRenderer {
         const variant = SchemaExtractor.findMatchingVariant(p, state.selectedVariants, state.lastClickedAttribute);
 
         if (variant && (p as any).variesBy) {
-            (p as any).variesBy.forEach((u: string) => {
-              const a = u.split(/[\/#]/).pop() || '';
-              if (variant[a]) state.selectedVariants[a] = String(variant[a]);
+            SchemaExtractor.getArray((p as any).variesBy).forEach((u: any) => {
+              const uStr = typeof u === 'string' ? u : SchemaExtractor.getFirst(u.url) || SchemaExtractor.getFirst(u.name) || '';
+              const a = uStr.split(/[\/#]/).pop() || '';
+              const variantVal = SchemaExtractor.getFirst(variant[a]);
+              if (variantVal) state.selectedVariants[a] = String(variantVal);
             });
         }
 
-        UIManager.setContent("p-name", variant.name || p.name);
-        UIManager.setContent("p-desc", variant.description || p.description);
-        UIManager.setContent("p-sku", variant.sku ? "SKU: " + variant.sku : "");
+        UIManager.setContent("p-name", SchemaExtractor.getFirst(variant.name) || SchemaExtractor.getFirst(p.name));
+        UIManager.setContent("p-desc", SchemaExtractor.getFirst(variant.description) || SchemaExtractor.getFirst(p.description));
+        UIManager.setContent("p-sku", variant.sku ? "SKU: " + SchemaExtractor.getFirst(variant.sku) : "");
 
-        const brand = typeof (variant.brand || p.brand) === "string"
-          ? (variant.brand || p.brand)
-          : ((variant.brand as Organization)?.name || (p.brand as Organization)?.name);
+        const variantBrand = SchemaExtractor.getFirst(variant.brand || p.brand);
+        const brand = typeof variantBrand === "string"
+          ? variantBrand
+          : SchemaExtractor.getFirst((variantBrand as Organization)?.name);
         UIManager.setContent("p-brand", brand || "");
 
-        const offer = (variant.offers || p.offers) as Offer;
+        const offer = SchemaExtractor.getFirst(variant.offers || p.offers) as Offer;
         const priceEl = UIManager.el("p-price");
         if (priceEl && offer) {
           const { price, currency } = SchemaExtractor.extractPrice(offer);
           priceEl.textContent = `${currency} ${price}`;
-          priceEl.classList.toggle("blurry", offer.availability === "https://schema.org/OutOfStock");
+          const availability = SchemaExtractor.extractAvailability(offer);
+          priceEl.classList.toggle("blurry", availability === "https://schema.org/OutOfStock");
         }
 
         this.renderStockBadge(offer);
@@ -55,9 +59,9 @@ export class ProductRenderer {
   }
 
   private renderBusinessView(b: any): void {
-      UIManager.setContent("p-name", b.name);
-      UIManager.setContent("p-desc", b.description || "");
-      UIManager.setContent("p-brand", b["@type"]);
+      UIManager.setContent("p-name", SchemaExtractor.getFirst(b.name));
+      UIManager.setContent("p-desc", SchemaExtractor.getFirst(b.description) || "");
+      UIManager.setContent("p-brand", SchemaExtractor.getFirst(b["@type"]));
 
       const priceEl = UIManager.el("p-price");
       if (priceEl) priceEl.textContent = "Service Provider";
@@ -77,7 +81,7 @@ export class ProductRenderer {
     const st = UIManager.el("stock-badge-container");
     if (st && offer) {
       UIManager.toggleClass("#stock-badge-container", "hidden", false);
-      const av = offer.availability;
+      const av = SchemaExtractor.extractAvailability(offer);
       let label = 'Out of Stock', css = 'out-stock', available = false;
       if (av === 'https://schema.org/InStock' || av === 'https://schema.org/OnlineOnly') {
         label = 'In Stock'; css = 'in-stock'; available = true;
@@ -97,8 +101,9 @@ export class ProductRenderer {
 
   private renderAreaServed(s: Service): void {
     const pDesc = UIManager.el('p-desc');
-    if (s && s.areaServed && pDesc) {
-      const area = typeof s.areaServed === 'string' ? s.areaServed : ((s.areaServed as any).name || (s.areaServed as any)['@type']);
+    const areaServed = SchemaExtractor.getFirst(s.areaServed);
+    if (s && areaServed && pDesc) {
+      const area = typeof areaServed === 'string' ? areaServed : (SchemaExtractor.getFirst((areaServed as any).name) || SchemaExtractor.getFirst((areaServed as any)['@type']));
       const existing = UIManager.el('svc-area-badge');
       if (existing) existing.remove();
       const ab = document.createElement('div');
@@ -141,9 +146,11 @@ export class ProductRenderer {
     if (vc && !vc.children.length) {
       if (p.variesBy) {
         UIManager.toggleClass("#p-variants", "hidden", false);
-        p.variesBy.forEach((u: string) => {
-          const a = u.split(/[\/#]/).pop() || '';
-          const vals = [...new Set(p.hasVariant.map((x: any) => x[a]).filter(Boolean))];
+        SchemaExtractor.getArray(p.variesBy).forEach((u: any) => {
+          const uStr = typeof u === 'string' ? u : SchemaExtractor.getFirst(u.url) || SchemaExtractor.getFirst(u.name) || '';
+          const a = uStr.split(/[\/#]/).pop() || '';
+          const variants = SchemaExtractor.getArray(p.hasVariant);
+          const vals = [...new Set(variants.map((x: any) => SchemaExtractor.getFirst(x[a])).filter(Boolean))];
           if (vals.length === 0) return;
           const g = document.createElement("div");
           g.className = "v-group";
@@ -157,10 +164,11 @@ export class ProductRenderer {
             btn.dataset.val = String(vl);
             if (a.toLowerCase() === "color") {
               btn.classList.add("v-color");
-              const vm = p.hasVariant.find((x: any) => String(x[a]) === String(vl));
-              const vi = vm && (Array.isArray(vm.image) ? vm.image[0] : vm.image);
+              const variants = SchemaExtractor.getArray(p.hasVariant);
+              const vm = variants.find((x: any) => String(SchemaExtractor.getFirst(x[a])) === String(vl));
+              const vi = vm && SchemaExtractor.getFirst(vm.image);
               if (vi) {
-                const url = vi.url || vi;
+                const url = (vi as any).url || vi;
                 btn.style.backgroundImage = `url('${url}')`;
               } else {
                 btn.style.backgroundColor = String(vl);
@@ -183,10 +191,14 @@ export class ProductRenderer {
         g.innerHTML = `<span class="v-label">Available Packages</span>`;
         const os = document.createElement("div");
         os.className = "v-options";
-        p.hasOfferCatalog.itemListElement.forEach((off: any) => {
+        const catalog = SchemaExtractor.getFirst(p.hasOfferCatalog);
+        SchemaExtractor.getArray(catalog?.itemListElement).forEach((off: any) => {
           const btn = document.createElement("button");
           btn.className = "v-btn";
-          btn.innerHTML = `${off.itemOffered?.name || off.name}<br/><small>${off.priceCurrency || "INR"} ${off.price}</small>`;
+          const itemName = SchemaExtractor.getFirst(off.itemOffered?.name) || SchemaExtractor.getFirst(off.name);
+          const itemPrice = SchemaExtractor.getFirst(off.price);
+          const itemCurrency = SchemaExtractor.getFirst(off.priceCurrency);
+          btn.innerHTML = `${itemName}<br/><small>${itemCurrency || "INR"} ${itemPrice}</small>`;
           btn.onclick = () => {
             state.selectedPackage = off;
             UIManager.setContent('p-price', `${off.priceCurrency} ${off.price}`);
@@ -210,15 +222,20 @@ export class ProductRenderer {
   }
 
   private checkAvailability(p: any, state: AppState): void {
-    if (!p || !p.hasVariant) return;
+    const variants = SchemaExtractor.getArray(p.hasVariant);
+    if (!p || variants.length === 0) return;
     document.querySelectorAll<HTMLButtonElement>('.v-btn[data-attr]').forEach(btn => {
       const a = btn.dataset.attr || '';
       const v = btn.dataset.val || '';
       const test = { ...state.selectedVariants, [a]: v };
-      const match = p.hasVariant.find((x: any) =>
-        Object.entries(test).every(([k, val]) => !x[k] || String(x[k]) === String(val))
+      const match = variants.find((x: any) =>
+        Object.entries(test).every(([k, val]) => {
+            const fieldVal = SchemaExtractor.getFirst(x[k]);
+            return !fieldVal || String(fieldVal) === String(val);
+        })
       );
-      const out = match && match.offers && match.offers.availability === 'https://schema.org/OutOfStock';
+      const availability = match ? SchemaExtractor.extractAvailability(match.offers) : null;
+      const out = availability === 'https://schema.org/OutOfStock';
       btn.style.opacity = !match ? '0.3' : (out ? '0.6' : '1');
       btn.style.borderStyle = !match ? 'dashed' : 'solid';
     });
@@ -257,11 +274,13 @@ export class ProductRenderer {
       return;
     }
     box.style.display = "block";
-    inf.innerHTML = `<strong>${s.name || "Antinna"}</strong><br/>${s.telephone ? `&#128222; ${s.telephone}<br/>` : ""}${s.email ? `&#128231; <a href="mailto:${s.email}">${s.email}</a><br/>` : ""}${s.address ? `📍 ${s.address.streetAddress || ""}, ${s.address.addressLocality || ""}` : ""}`;
+    const address = SchemaExtractor.getFirst(s.address);
+    inf.innerHTML = `<strong>${SchemaExtractor.getFirst(s.name) || "Antinna"}</strong><br/>${SchemaExtractor.getFirst(s.telephone) ? `&#128222; ${SchemaExtractor.getFirst(s.telephone)}<br/>` : ""}${SchemaExtractor.getFirst(s.email) ? `&#128231; <a href="mailto:${SchemaExtractor.getFirst(s.email)}">${SchemaExtractor.getFirst(s.email)}</a><br/>` : ""}${address ? `📍 ${SchemaExtractor.getFirst(address.streetAddress) || ""}, ${SchemaExtractor.getFirst(address.addressLocality) || ""}` : ""}`;
     if (maps) {
-      if (s.hasMap || s.geo) {
+      const geo = SchemaExtractor.getFirst(s.geo);
+      if (SchemaExtractor.getFirst(s.hasMap) || geo) {
         maps.style.display = "inline-flex";
-        maps.href = s.hasMap || `https://www.google.com/maps/search/?api=1&query=${s.geo.latitude},${s.geo.longitude}`;
+        maps.href = SchemaExtractor.getFirst(s.hasMap) || `https://www.google.com/maps/search/?api=1&query=${geo.latitude},${geo.longitude}`;
       } else {
         maps.style.display = "none";
       }
@@ -290,9 +309,9 @@ export class ProductRenderer {
 
       otherList.innerHTML = svcs.map((ser: any) => {
         const item = ser.itemOffered || ser;
-        const n = item.name || ser.name;
+        const n = SchemaExtractor.getFirst(item.name) || SchemaExtractor.getFirst(ser.name);
         const { price, currency } = SchemaExtractor.extractPrice(ser);
-        const url = p.url || window.location.href.split('?')[0].split('#')[0];
+        const url = SchemaExtractor.getFirst(p.url) || window.location.href.split('?')[0].split('#')[0];
         const itemWithUrl = { ...item, url, offers: { "@type": "Offer", price, priceCurrency: currency, availability: SchemaExtractor.extractAvailability(ser) } };
 
         let btnH = `<button class="v-btn" style="width:100%;padding:10px;font-size:0.85rem;" onclick="CartManager.addItem(${JSON.stringify(itemWithUrl).replace(/"/g, '&quot;')}, ${JSON.stringify(s).replace(/"/g, '&quot;')}); CartRenderer.updateUI();">Add Service</button>`;

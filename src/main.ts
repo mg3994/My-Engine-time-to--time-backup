@@ -1,4 +1,4 @@
-import { AppState, LocationData } from './types/app';
+import { AppState } from './types/app';
 import { SchemaExtractor } from './core/SchemaExtractor';
 import { CartManager } from './core/CartManager';
 import { LocationManager } from './core/LocationManager';
@@ -121,6 +121,7 @@ export class App {
     (window as any).showOrderSummary = () => this.showOrderSummary();
     (window as any).showGeoVerification = () => this.showGeoVerification();
     (window as any).setVerifiedLocation = (loc: any) => { this.state.verifiedLocation = loc; };
+    (window as any).handleAddToCart = () => this.handleAddToCart();
   }
 
   private init(): void {
@@ -309,16 +310,18 @@ export class App {
           const card = document.createElement("a");
           card.className = "card";
           card.href = url;
+          const firstImage = SchemaExtractor.getFirst(data.image);
+          const imageUrl = (firstImage as any)?.url || firstImage || 'https://via.placeholder.com/400x300?text=Antinna';
           card.innerHTML = `
             <div class="card-img-wrapper">
                <div class="card-img-scroll" onscroll="AntinnaEngine.syncDots(this)">
-                  <img class="card-img" src="${(Array.isArray(data.image) ? data.image[0] : (data.image?.url || data.image)) || 'https://via.placeholder.com/400x300?text=Antinna'}" loading="lazy"/>
+                  <img class="card-img" src="${imageUrl}" loading="lazy"/>
                </div>
                <div class="card-dots"></div>
             </div>
             <div class="card-body">
               <div class="card-badge">Loading...</div>
-              <h3 class="card-title">${data.name || "Untitled"}</h3>
+              <h3 class="card-title">${SchemaExtractor.getFirst(data.name) || "Untitled"}</h3>
               <div class="card-price">--</div>
             </div>
           `;
@@ -334,8 +337,8 @@ export class App {
         const order = this.CartManager.getOrder();
         const { entries } = await this.BloggerDataService.fetchFeedData(100, 1);
 
-        order.orderedItem.forEach((item, idx) => {
-          const url = (item.orderedItem as any).url;
+        SchemaExtractor.getArray(order.orderedItem).forEach((item: any, idx) => {
+          const url = SchemaExtractor.getFirst(item.orderedItem?.url);
           if (!url) return;
 
           const entry = entries.find(e => {
@@ -360,21 +363,27 @@ export class App {
     const scroll = card.querySelector(".card-img-scroll");
     const dots = card.querySelector(".card-dots");
 
-    const isBusiness = data["@type"] === "LocalBusiness" || data["@type"] === "Store" || data["@type"] === "Organization";
+    const types = SchemaExtractor.getArray(data["@type"]);
+    const isBusiness = types.some(t => t === "LocalBusiness" || t === "Store" || t === "Organization");
 
-    if (badge) badge.textContent = isBusiness ? 'Business' : ((data["@type"] === 'ProductGroup' || data["@type"] === 'Product') ? 'Product' : 'Service');
+    if (badge) {
+        if (isBusiness) badge.textContent = 'Business';
+        else if (types.some(t => t === 'ProductGroup' || t === 'Product')) badge.textContent = 'Product';
+        else badge.textContent = 'Service';
+    }
 
     if (price) {
         if (isBusiness) {
-            price.textContent = data.telephone || "Contact Us";
+            price.textContent = SchemaExtractor.getFirst(data.telephone) || "Contact Us";
         } else {
-            const variant = data.hasVariant ? data.hasVariant[0] : data;
+            const variants = SchemaExtractor.getArray(data.hasVariant);
+            const variant = variants.length > 0 ? variants[0] : data;
             const { price: p, currency } = SchemaExtractor.extractPrice(variant.offers || variant);
             price.textContent = `${currency} ${p}`;
         }
     }
 
-    const imgs = Array.isArray(data.image) ? data.image : [data.image];
+    const imgs = SchemaExtractor.getArray(data.image);
     if (imgs[0] && scroll) {
       scroll.innerHTML = imgs.map((img: any) => `<img class="card-img" src="${img.url || img}" loading="lazy"/>`).join('');
       if (dots && imgs.length > 1) {

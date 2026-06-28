@@ -27,6 +27,9 @@ export class UIManager {
     const style = document.createElement('style');
     style.id = 'antinna-modal-styles';
     style.textContent = `
+      @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+      @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+      .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; align-items: flex-end; pointer-events: none; }
       .antinna-geo-backdrop { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 4000; display: none; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
       .antinna-geo-backdrop.active { display: flex; opacity: 1; pointer-events: auto; }
       .antinna-geo-content { background: var(--card); width: 95%; max-width: 500px; padding: 25px; border-radius: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.3); position: relative; max-height: 90vh; overflow-y: auto; color: var(--text); }
@@ -94,14 +97,43 @@ export class UIManager {
     document.head.appendChild(style);
   }
 
-  static showToast(message: string, type: 'success' | 'error' = 'success'): void {
-    const e = document.createElement("div");
-    e.style.cssText = "position:fixed;bottom:24px;right:24px;color:white;padding:12px 24px;border-radius:10px;font-weight:600;z-index:3000;transition: opacity 0.3s; background:" + (type === "success" ? "#10b981" : "#ef4444");
-    e.textContent = message;
-    document.body.appendChild(e);
+  static showToast(message: string, type: 'success' | 'error' | 'info' = 'success'): void {
+    this.injectModalStyles();
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+
+    // To satisfy "Don't stack" (meaning show only one at a time)
+    container.innerHTML = '';
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.style.cssText = `
+        background: ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#1e293b'};
+        color: white;
+        padding: 12px 24px;
+        border-radius: 10px;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 10px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        pointer-events: auto;
+        border: 1px solid rgba(255,255,255,0.1);
+    `;
+    toast.innerText = message;
+    container.appendChild(toast);
+
     setTimeout(() => {
-      e.style.opacity = "0";
-      setTimeout(() => e.remove(), 300);
+        toast.style.animation = 'fadeOut 0.3s forwards';
+        setTimeout(() => toast.remove(), 300);
     }, 3000);
   }
 }

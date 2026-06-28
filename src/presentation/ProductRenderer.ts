@@ -148,7 +148,7 @@ export class ProductRenderer {
       this.updateQtyButtons();
   }
 
-  private updateQtyButtons(): void {
+  public updateQtyButtons(): void {
       const limits = (window as any).currentQuantityLimits;
       const qtyPlus = UIManager.el<HTMLButtonElement>("qty-plus");
       const currentQty = parseInt(UIManager.el("qty-val")?.textContent || "1");

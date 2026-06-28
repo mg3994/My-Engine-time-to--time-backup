@@ -61,8 +61,21 @@ export class CartManager {
 
   public isItemOrderable(item: any): boolean {
       if (item.isUnavailable) return false;
-      const av = SchemaExtractor.extractAvailability(item.orderedItem.offers);
-      return av !== "https://schema.org/OutOfStock" && av !== "https://schema.org/SoldOut";
+      const av = SchemaExtractor.extractAvailability(item.orderedItem?.offers);
+      if (av === "https://schema.org/OutOfStock" || av === "https://schema.org/SoldOut") return false;
+      return true;
+  }
+
+  public isItemQuantityValid(item: any): boolean {
+      const min = item._constraints?.minValue;
+      if (min !== null && min !== undefined && (item.orderQuantity || 1) < min) return false;
+      return true;
+  }
+
+  public isCartValid(): boolean {
+      const items = SchemaExtractor.getArray(this.order.orderedItem);
+      if (items.length === 0) return false;
+      return items.every(item => this.isItemOrderable(item) && this.isItemQuantityValid(item));
   }
 
   addItem(item: Product | Service, seller?: Organization, selectedVariants?: Record<string, string>): void {
@@ -83,7 +96,14 @@ export class CartManager {
       (oi: any) => oi.itemKey === itemKey
     );
 
+    const { minValue, maxValue } = SchemaExtractor.extractEligibleQuantity(item.offers);
+
     if (existing) {
+      if (maxValue !== null && (existing as any).orderQuantity >= maxValue) {
+          const UIManager = (window as any).UIManager;
+          if (UIManager) UIManager.showToast(`Maximum limit of ${maxValue} reached for this item`, "error");
+          return;
+      }
       (existing as any).orderQuantity = ((existing as any).orderQuantity || 0) + 1;
     } else {
       const specs: any = {};
@@ -107,7 +127,8 @@ export class CartManager {
         },
         orderQuantity: 1,
         seller: seller ? JSON.parse(JSON.stringify(seller)) : undefined,
-        itemKey: itemKey
+        itemKey: itemKey,
+        _constraints: { minValue, maxValue }
       } as any);
       this.order.orderedItem = orderedItems;
     }
@@ -145,7 +166,17 @@ export class CartManager {
     const orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
     const item = orderedItems[index] as any;
     if (!item) return;
-    item.orderQuantity = (item.orderQuantity || 0) + delta;
+
+    const newQty = (item.orderQuantity || 0) + delta;
+    const max = item._constraints?.maxValue;
+
+    if (delta > 0 && max !== null && max !== undefined && newQty > max) {
+        const UIManager = (window as any).UIManager;
+        if (UIManager) UIManager.showToast(`Maximum limit of ${max} reached`, "error");
+        return;
+    }
+
+    item.orderQuantity = newQty;
     if (item.orderQuantity <= 0) {
       this.removeItem(index);
     } else {
@@ -203,7 +234,9 @@ export class CartManager {
           item.isUnavailable = false;
           const { price, currency } = SchemaExtractor.extractPrice(freshMatch.offers || freshMatch);
           const availability = SchemaExtractor.extractAvailability(freshMatch.offers || freshMatch);
+          const { minValue, maxValue } = SchemaExtractor.extractEligibleQuantity(freshMatch.offers || freshMatch);
 
+          item._constraints = { minValue, maxValue };
           item.orderedItem.offers = {
               "@type": "Offer",
               price: price,

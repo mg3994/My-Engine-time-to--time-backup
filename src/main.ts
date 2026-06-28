@@ -122,6 +122,7 @@ export class App {
     (window as any).showGeoVerification = () => this.showGeoVerification();
     (window as any).setVerifiedLocation = (loc: any) => { this.state.verifiedLocation = loc; };
     (window as any).handleAddToCart = () => this.handleAddToCart();
+    (window as any).setQuantity = (q: number) => { this.state.quantity = q; };
   }
 
   private init(): void {
@@ -194,14 +195,21 @@ export class App {
     const searchForm = UIManager.el<HTMLFormElement>("search-form");
 
     if (qtyPlus) qtyPlus.onclick = () => {
+      const limits = (window as any).currentQuantityLimits;
+      if (limits?.maxValue !== null && this.state.quantity >= limits.maxValue) {
+          UIManager.showToast(`Maximum limit of ${limits.maxValue} reached`, "error");
+          return;
+      }
       this.state.quantity++;
       UIManager.setContent("qty-val", String(this.state.quantity));
+      this.ProductRenderer.updateQtyButtons();
     };
 
     if (qtyMinus) qtyMinus.onclick = () => {
       if (this.state.quantity > 1) {
         this.state.quantity--;
         UIManager.setContent("qty-val", String(this.state.quantity));
+        this.ProductRenderer.updateQtyButtons();
       }
     };
 

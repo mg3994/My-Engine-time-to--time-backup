@@ -51,7 +51,11 @@ export class CartRenderer {
       fab.style.transform = count > 0 ? "scale(1)" : "scale(0)";
     }
     const proceedBtn = UIManager.el<HTMLButtonElement>("cart-proceed-btn");
-    if (proceedBtn) proceedBtn.disabled = count === 0;
+    if (proceedBtn) {
+        const isCartValid = this.cartManager.isCartValid();
+        proceedBtn.disabled = count === 0 || !isCartValid;
+        proceedBtn.style.opacity = proceedBtn.disabled ? '0.5' : '1';
+    }
   }
 
   showModal(): void {
@@ -77,11 +81,13 @@ export class CartRenderer {
       const isOutOfStock = availability === "https://schema.org/OutOfStock" || availability === "https://schema.org/SoldOut";
 
       const isOrderable = !isUnavailable && !isOutOfStock;
-      const opacity = isOrderable ? '1' : '0.5';
+      const isQuantityValid = this.cartManager.isItemQuantityValid(item);
+      const opacity = (isOrderable && isQuantityValid) ? '1' : '0.5';
 
       let statusText = '';
       if (isUnavailable) statusText = '<div style="color:red; font-size:0.7rem; font-weight:800;">Currently Unavailable</div>';
       else if (isOutOfStock) statusText = '<div style="color:orange; font-size:0.7rem; font-weight:800;">Out of Stock</div>';
+      else if (!isQuantityValid) statusText = `<div style="color:#ef4444; font-size:0.7rem; font-weight:800;">Minimum ${item._constraints?.minValue} required</div>`;
 
       const { price, currency } = SchemaExtractor.extractPrice(item.orderedItem?.offers);
 
@@ -95,7 +101,7 @@ export class CartRenderer {
               <div style="display:flex; align-items:center; gap:12px; margin-top:10px;">
                  <button class="qty-btn" style="width:24px; height:24px; font-size:0.8rem;" ${!isOrderable ? 'disabled' : ''} onclick="CartManager.updateQty(${idx},-1); CartRenderer.showModal();">-</button>
                  <span style="font-weight:800;">${item.orderQuantity || 1}</span>
-                 <button class="qty-btn" style="width:24px; height:24px; font-size:0.8rem;" ${!isOrderable ? 'disabled' : ''} onclick="CartManager.updateQty(${idx},1); CartRenderer.showModal();">+</button>
+                 <button class="qty-btn" style="width:24px; height:24px; font-size:0.8rem;" ${(!isOrderable || (item._constraints?.maxValue !== null && (item.orderQuantity || 1) >= item._constraints.maxValue)) ? 'disabled' : ''} onclick="CartManager.updateQty(${idx},1); CartRenderer.showModal();">+</button>
               </div>
            </div>
            <button onclick="CartManager.removeItem(${idx}); CartRenderer.showModal();" style="background:none;border:none;color:#ff3b30;cursor:pointer;font-size:1.2rem; padding:10px;">×</button>

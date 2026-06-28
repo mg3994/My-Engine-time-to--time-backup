@@ -47,6 +47,7 @@ export class ProductRenderer {
         const imgs = Array.isArray(variant.image || p.image) ? (variant.image || p.image) : [variant.image || p.image];
         this.renderCarousel(imgs.filter(Boolean));
 
+        this.renderQuantityConstraints(offer);
         this.renderVariants(p, state, onVariantChange);
         this.renderSpecs(variant, p);
 
@@ -115,6 +116,47 @@ export class ProductRenderer {
       ab.innerHTML = `&#127760; <b>Area Served:</b> ${area}`;
       pDesc.before(ab);
     }
+  }
+
+  private renderQuantityConstraints(offer: Offer): void {
+      const { minValue, maxValue } = SchemaExtractor.extractEligibleQuantity(offer);
+      const container = UIManager.query('.qty-controls');
+      if (!container) return;
+
+      const existingHint = UIManager.el('qty-constraints-hint');
+      if (existingHint) existingHint.remove();
+
+      if (minValue !== null || maxValue !== null) {
+          const hint = document.createElement('div');
+          hint.id = 'qty-constraints-hint';
+          hint.style.fontSize = '0.75rem';
+          hint.style.color = '#777';
+          hint.style.marginTop = '8px';
+          hint.style.fontWeight = '600';
+
+          let text = '';
+          if (minValue !== null && maxValue !== null) text = `Min: ${minValue}, Max: ${maxValue}`;
+          else if (minValue !== null) text = `Minimum order: ${minValue}`;
+          else if (maxValue !== null) text = `Maximum order: ${maxValue}`;
+
+          hint.textContent = text;
+          container.after(hint);
+      }
+
+      // Update actual buttons via App state (handled in main.ts)
+      (window as any).currentQuantityLimits = { minValue, maxValue };
+      this.updateQtyButtons();
+  }
+
+  private updateQtyButtons(): void {
+      const limits = (window as any).currentQuantityLimits;
+      const qtyPlus = UIManager.el<HTMLButtonElement>("qty-plus");
+      const currentQty = parseInt(UIManager.el("qty-val")?.textContent || "1");
+
+      if (qtyPlus && limits?.maxValue !== null) {
+          qtyPlus.disabled = currentQty >= limits.maxValue;
+          qtyPlus.style.opacity = qtyPlus.disabled ? '0.5' : '1';
+      }
   }
 
   private renderCarousel(imgs: any[]): void {

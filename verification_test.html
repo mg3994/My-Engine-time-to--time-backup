@@ -113,7 +113,16 @@
                     "name": "Super Smartphone White",
                     "color": "White",
                     "sku": "PHONE-WHT",
-                    "offers": { "price": "50999", "priceCurrency": "INR", "availability": "https://schema.org/InStock" }
+                    "offers": {
+                        "price": "50999",
+                        "priceCurrency": "INR",
+                        "availability": "https://schema.org/InStock",
+                        "eligibleQuantity": {
+                            "@type": "QuantitativeValue",
+                            "minValue": 2,
+                            "maxValue": 5
+                        }
+                    }
                 }
             ]
         }

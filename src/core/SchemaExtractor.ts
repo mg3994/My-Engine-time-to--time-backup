@@ -135,4 +135,23 @@ export class SchemaExtractor {
       // If availability is an object with @id, use that, otherwise stringify
       return (av as any)?.["@id"] || String(av);
   }
+
+  static extractEligibleQuantity(offer: any): { minValue: number | null, maxValue: number | null } {
+      const off = Array.isArray(offer) ? offer[0] : offer;
+      if (!off) return { minValue: null, maxValue: null };
+
+      const eq = this.getFirst(off.eligibleQuantity) ||
+                 this.getFirst(this.getArray(off.itemOffered)[0]?.offers?.eligibleQuantity) ||
+                 this.getFirst(this.getArray(off.offers)[0]?.eligibleQuantity);
+
+      if (!eq) return { minValue: null, maxValue: null };
+
+      const min = this.getFirst(eq.minValue);
+      const max = this.getFirst(eq.maxValue);
+
+      return {
+          minValue: min !== undefined ? Number(min) : null,
+          maxValue: max !== undefined ? Number(max) : null
+      };
+  }
 }

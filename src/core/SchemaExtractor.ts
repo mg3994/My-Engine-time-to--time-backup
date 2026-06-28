@@ -136,13 +136,15 @@ export class SchemaExtractor {
       return (av as any)?.["@id"] || String(av);
   }
 
-  static extractEligibleQuantity(offer: any): { minValue: number | null, maxValue: number | null } {
-      const off = Array.isArray(offer) ? offer[0] : offer;
-      if (!off) return { minValue: null, maxValue: null };
+  static extractEligibleQuantity(data: any): { minValue: number | null, maxValue: number | null } {
+      const obj = Array.isArray(data) ? data[0] : data;
+      if (!obj) return { minValue: null, maxValue: null };
 
-      const eq = this.getFirst(off.eligibleQuantity) ||
-                 this.getFirst(this.getArray(off.itemOffered)[0]?.offers?.eligibleQuantity) ||
-                 this.getFirst(this.getArray(off.offers)[0]?.eligibleQuantity);
+      const eq = this.getFirst(obj.eligibleQuantity) ||
+                 this.getFirst(this.getArray(obj.itemOffered)[0]?.offers?.eligibleQuantity) ||
+                 this.getFirst(this.getArray(obj.itemOffered)[0]?.eligibleQuantity) ||
+                 this.getFirst(this.getArray(obj.offers)[0]?.eligibleQuantity) ||
+                 this.getFirst(this.getArray(obj.offers)[0]?.itemOffered?.eligibleQuantity);
 
       if (!eq) return { minValue: null, maxValue: null };
 

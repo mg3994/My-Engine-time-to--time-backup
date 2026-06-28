@@ -123,6 +123,7 @@ export class App {
     (window as any).setVerifiedLocation = (loc: any) => { this.state.verifiedLocation = loc; };
     (window as any).handleAddToCart = () => this.handleAddToCart();
     (window as any).setQuantity = (q: number) => { this.state.quantity = q; };
+    (window as any).loadProductData = () => this.loadProductData();
   }
 
   private init(): void {

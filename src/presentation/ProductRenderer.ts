@@ -243,7 +243,8 @@ export class ProductRenderer {
           btn.innerHTML = `${itemName}<br/><small>${itemCurrency || "INR"} ${itemPrice}</small>`;
           btn.onclick = () => {
             state.selectedPackage = off;
-            UIManager.setContent('p-price', `${off.priceCurrency} ${off.price}`);
+            UIManager.setContent('p-price', `${SchemaExtractor.getFirst(off.priceCurrency)} ${SchemaExtractor.getFirst(off.price)}`);
+            this.renderQuantityConstraints(off);
             document.querySelectorAll('.v-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
           };
@@ -338,7 +339,7 @@ export class ProductRenderer {
     const allCatalogs = SchemaExtractor.findAllCatalogs(s);
     let svcs: any[] = [];
     allCatalogs.forEach(cat => {
-        if (cat.itemListElement) svcs.push(...cat.itemListElement);
+        svcs.push(...SchemaExtractor.getArray(cat.itemListElement));
     });
 
     if (svcs.length > 0) {
@@ -354,11 +355,34 @@ export class ProductRenderer {
         const n = SchemaExtractor.getFirst(item.name) || SchemaExtractor.getFirst(ser.name);
         const { price, currency } = SchemaExtractor.extractPrice(ser);
         const url = SchemaExtractor.getFirst(p.url) || window.location.href.split('?')[0].split('#')[0];
-        const itemWithUrl = { ...item, url, offers: { "@type": "Offer", price, priceCurrency: currency, availability: SchemaExtractor.extractAvailability(ser) } };
+        const { minValue, maxValue } = SchemaExtractor.extractEligibleQuantity(ser);
+
+        const itemWithUrl = {
+            ...item,
+            url,
+            offers: {
+                "@type": "Offer",
+                price,
+                priceCurrency: currency,
+                availability: SchemaExtractor.extractAvailability(ser),
+                eligibleQuantity: {
+                    "@type": "QuantitativeValue",
+                    minValue,
+                    maxValue
+                }
+            }
+        };
+
+        let constraintText = '';
+        if (minValue !== null || maxValue !== null) {
+            if (minValue !== null && maxValue !== null) constraintText = `<div style="font-size:0.7rem; color:#777; margin-bottom:8px;">Min: ${minValue}, Max: ${maxValue}</div>`;
+            else if (minValue !== null) constraintText = `<div style="font-size:0.7rem; color:#777; margin-bottom:8px;">Min: ${minValue}</div>`;
+            else if (maxValue !== null) constraintText = `<div style="font-size:0.7rem; color:#777; margin-bottom:8px;">Max: ${maxValue}</div>`;
+        }
 
         let btnH = `<button class="v-btn" style="width:100%;padding:10px;font-size:0.85rem;" onclick="CartManager.addItem(${JSON.stringify(itemWithUrl).replace(/"/g, '&quot;')}, ${JSON.stringify(s).replace(/"/g, '&quot;')}); CartRenderer.updateUI();">Add Service</button>`;
 
-        return `<div class="h-card"><div style="font-weight:700;margin-bottom:10px;height:3em;overflow:hidden;">${n}</div><div class="price" style="font-size:1.2rem;margin-bottom:15px;">${price !== "0" ? currency + ' ' + price : 'Free/Included'}</div>${btnH}</div>`;
+        return `<div class="h-card"><div style="font-weight:700;margin-bottom:10px;height:3em;overflow:hidden;">${n}</div><div class="price" style="font-size:1.2rem;margin-bottom:15px;">${price !== "0" ? currency + ' ' + price : 'Free/Included'}</div>${constraintText}${btnH}</div>`;
       }).join('');
     } else {
       otherSec.style.display = "none";

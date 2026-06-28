@@ -96,7 +96,7 @@ export class CartManager {
       (oi: any) => oi.itemKey === itemKey
     );
 
-    const { minValue, maxValue } = SchemaExtractor.extractEligibleQuantity(item.offers);
+    const { minValue, maxValue } = SchemaExtractor.extractEligibleQuantity(item);
 
     if (existing) {
       if (maxValue !== null && (existing as any).orderQuantity >= maxValue) {
@@ -201,14 +201,7 @@ export class CartManager {
           for (const catalog of allCatalogs) {
               const matchedPackage = SchemaExtractor.findMatchingServicePackage({ hasOfferCatalog: catalog }, cartItem.name);
               if (matchedPackage) {
-                  const { price, currency } = SchemaExtractor.extractPrice(matchedPackage);
-                  const availability = SchemaExtractor.extractAvailability(matchedPackage);
-                  freshMatch = {
-                      ...cartItem,
-                      ...(matchedPackage.itemOffered || matchedPackage),
-                      "@type": (matchedPackage.itemOffered?.["@type"] || matchedPackage["@type"] || cartItem["@type"]),
-                      offers: { "@type": "Offer", price, priceCurrency: currency, availability }
-                  };
+                  freshMatch = matchedPackage;
                   break;
               }
           }
@@ -232,20 +225,27 @@ export class CartManager {
 
       if (freshMatch) {
           item.isUnavailable = false;
-          const { price, currency } = SchemaExtractor.extractPrice(freshMatch.offers || freshMatch);
-          const availability = SchemaExtractor.extractAvailability(freshMatch.offers || freshMatch);
-          const { minValue, maxValue } = SchemaExtractor.extractEligibleQuantity(freshMatch.offers || freshMatch);
+          const { price, currency } = SchemaExtractor.extractPrice(freshMatch);
+          const availability = SchemaExtractor.extractAvailability(freshMatch);
+          const { minValue, maxValue } = SchemaExtractor.extractEligibleQuantity(freshMatch);
 
           item._constraints = { minValue, maxValue };
           item.orderedItem.offers = {
               "@type": "Offer",
               price: price,
               priceCurrency: currency,
-              availability: availability
+              availability: availability,
+              eligibleQuantity: (minValue !== null || maxValue !== null) ? {
+                  "@type": "QuantitativeValue",
+                  minValue,
+                  maxValue
+              } : undefined
           };
-          item.orderedItem.image = freshMatch.image || item.orderedItem.image;
-          item.orderedItem.name = freshMatch.name || item.orderedItem.name;
-          item.orderedItem.description = freshMatch.description || item.orderedItem.description;
+
+          const matchedItem = freshMatch.itemOffered || freshMatch;
+          item.orderedItem.image = matchedItem.image || item.orderedItem.image;
+          item.orderedItem.name = matchedItem.name || item.orderedItem.name;
+          item.orderedItem.description = matchedItem.description || item.orderedItem.description;
       } else {
           item.isUnavailable = true;
       }

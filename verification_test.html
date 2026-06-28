@@ -92,7 +92,15 @@
                                 "itemOffered": {
                                     "@type": "Service",
                                     "name": "Screen Protection",
-                                    "offers": { "price": "999", "priceCurrency": "INR" }
+                                    "offers": {
+                                        "price": "999",
+                                        "priceCurrency": "INR",
+                                        "eligibleQuantity": {
+                                            "@type": "QuantitativeValue",
+                                            "minValue": 1,
+                                            "maxValue": 1
+                                        }
+                                    }
                                 }
                             }
                         ]

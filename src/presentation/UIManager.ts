@@ -107,9 +107,6 @@ export class UIManager {
         document.body.appendChild(container);
     }
 
-    // To satisfy "Don't stack" (meaning show only one at a time)
-    container.innerHTML = '';
-
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     toast.style.cssText = `

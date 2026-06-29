@@ -163,4 +163,25 @@ export class SchemaExtractor {
           maxValue: max !== undefined ? Number(max) : null
       };
   }
+
+  static extractAdvanceBookingRequirement(offer: any): string | null {
+      const off = Array.isArray(offer) ? offer[0] : offer;
+      if (!off) return null;
+
+      const abr = this.getFirst(off.advanceBookingRequirement);
+      if (!abr) return null;
+
+      if (typeof abr === 'string') return abr;
+
+      const val = this.getFirst(abr.value);
+      const unit = this.getFirst(abr.unitCode) || this.getFirst(abr.unitText) || "";
+
+      if (val === undefined) return null;
+
+      let unitLabel = unit;
+      if (unit === 'HUR') unitLabel = 'Hours';
+      else if (unit === 'DAY') unitLabel = 'Days';
+
+      return `${val} ${unitLabel}`.trim();
+  }
 }

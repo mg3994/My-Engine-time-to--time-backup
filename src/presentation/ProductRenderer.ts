@@ -400,6 +400,7 @@ export class ProductRenderer {
         const { price, currency } = SchemaExtractor.extractPrice(ser);
         const url = SchemaExtractor.getFirst(p.url) || window.location.href.split('?')[0].split('#')[0];
         const { minValue, maxValue } = SchemaExtractor.extractEligibleQuantity(ser);
+        const bookingReq = SchemaExtractor.extractAdvanceBookingRequirement(ser);
 
         const itemWithUrl = {
             ...item,
@@ -419,14 +420,18 @@ export class ProductRenderer {
 
         let constraintText = '';
         if (minValue !== null || maxValue !== null) {
-            if (minValue !== null && maxValue !== null) constraintText = `<div style="font-size:0.7rem; color:#777; margin-bottom:8px;">Min: ${minValue}, Max: ${maxValue}</div>`;
-            else if (minValue !== null) constraintText = `<div style="font-size:0.7rem; color:#777; margin-bottom:8px;">Min: ${minValue}</div>`;
-            else if (maxValue !== null) constraintText = `<div style="font-size:0.7rem; color:#777; margin-bottom:8px;">Max: ${maxValue}</div>`;
+            if (minValue !== null && maxValue !== null) constraintText = `<div style="font-size:0.7rem; color:#777; margin-bottom:4px;">Min: ${minValue}, Max: ${maxValue}</div>`;
+            else if (minValue !== null) constraintText = `<div style="font-size:0.7rem; color:#777; margin-bottom:4px;">Min: ${minValue}</div>`;
+            else if (maxValue !== null) constraintText = `<div style="font-size:0.7rem; color:#777; margin-bottom:4px;">Max: ${maxValue}</div>`;
         }
 
-        let btnH = `<button class="v-btn" style="width:100%;padding:10px;font-size:0.85rem;" onclick="CartManager.addItem(${JSON.stringify(itemWithUrl).replace(/"/g, '&quot;')}, ${JSON.stringify(s).replace(/"/g, '&quot;')}); CartRenderer.updateUI();">Add Service</button>`;
+        const bookingText = bookingReq ? `<div style="font-size:0.7rem; color:var(--accent); font-weight:700; margin-bottom:8px;">Booking: ${bookingReq}</div>` : '';
 
-        return `<div class="h-card"><div style="font-weight:700;margin-bottom:10px;height:3em;overflow:hidden;">${n}</div><div class="price" style="font-size:1.2rem;margin-bottom:15px;">${price !== "0" ? currency + ' ' + price : 'Free/Included'}</div>${constraintText}${btnH}</div>`;
+        const itemJson = JSON.stringify(itemWithUrl).replace(/"/g, '&quot;');
+        const sellerJson = JSON.stringify(s).replace(/"/g, '&quot;');
+        let btnH = `<button class="v-btn" style="width:100%;padding:10px;font-size:0.85rem;" onclick="CartManager.addItem(${itemJson}, ${sellerJson}); CartRenderer.updateUI(); showToast('Service Added', 'success');">Add Service</button>`;
+
+        return `<div class="h-card"><div style="font-weight:700;margin-bottom:10px;height:3em;overflow:hidden;">${n}</div><div class="price" style="font-size:1.2rem;margin-bottom:15px;">${price !== "0" ? currency + ' ' + price : 'Free/Included'}</div>${constraintText}${bookingText}${btnH}</div>`;
       }).join('');
     } else {
       otherSec.style.display = "none";

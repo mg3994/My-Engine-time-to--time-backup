@@ -395,15 +395,17 @@ export class ProductRenderer {
       }
 
       otherList.innerHTML = svcs.map((ser: any) => {
-        const item = ser.itemOffered || ser;
-        const n = SchemaExtractor.getFirst(item.name) || SchemaExtractor.getFirst(ser.name);
+        const rawItem = SchemaExtractor.getFirst(ser.itemOffered) || ser;
+        const n = SchemaExtractor.getFirst(rawItem.name) || SchemaExtractor.getFirst(ser.name);
         const { price, currency } = SchemaExtractor.extractPrice(ser);
         const url = SchemaExtractor.getFirst(p.url) || window.location.href.split('?')[0].split('#')[0];
         const { minValue, maxValue } = SchemaExtractor.extractEligibleQuantity(ser);
         const bookingReq = SchemaExtractor.extractAdvanceBookingRequirement(ser);
 
         const itemWithUrl = {
-            ...item,
+            ...rawItem,
+            name: n,
+            "@type": rawItem["@type"] || ser["@type"] || "Service",
             url,
             offers: {
                 "@type": "Offer",

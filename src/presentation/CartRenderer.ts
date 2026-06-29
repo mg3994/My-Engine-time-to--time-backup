@@ -90,6 +90,7 @@ export class CartRenderer {
       else if (!isQuantityValid) statusText = `<div style="color:#ef4444; font-size:0.7rem; font-weight:800;">Minimum ${item._constraints?.minValue} required</div>`;
 
       const { price, currency } = SchemaExtractor.extractPrice(item.orderedItem?.offers);
+      const bookingReq = SchemaExtractor.extractAdvanceBookingRequirement(item.orderedItem?.offers);
 
       return `
         <div style="display:flex; gap:15px; padding:15px; border-bottom:1px solid rgba(0,0,0,0.05); align-items:center; opacity:${opacity};">
@@ -97,6 +98,7 @@ export class CartRenderer {
            <div style="flex:1;">
               <div style="font-weight:700;font-size:0.9rem;">${SchemaExtractor.getFirst(item.orderedItem?.name)}</div>
               ${statusText}
+              ${bookingReq ? `<div style="color:var(--accent); font-size:0.7rem; font-weight:700;">Booking: ${bookingReq}</div>` : ''}
               <div style="color:var(--accent); font-weight:800; font-size:0.85rem; margin-top:4px;">${currency} ${price}</div>
               <div style="display:flex; align-items:center; gap:12px; margin-top:10px;">
                  <button class="qty-btn" style="width:24px; height:24px; font-size:0.8rem;" ${!isOrderable ? 'disabled' : ''} onclick="CartManager.updateQty(${idx},-1); CartRenderer.showModal();">-</button>

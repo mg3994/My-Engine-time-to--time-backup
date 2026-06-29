@@ -22,11 +22,15 @@ export class OrderSummaryRenderer {
         const { price, currency } = SchemaExtractor.extractPrice(itemOffered.offers || item.offers);
         const name = SchemaExtractor.getFirst(itemOffered.name) || "Unnamed Item";
         const qty = item.orderQuantity || item.amount?.value || 1;
+        const bookingReq = SchemaExtractor.extractAdvanceBookingRequirement(itemOffered.offers || item.offers);
 
         return `
-            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee; font-size:0.9rem;">
-                <span style="flex:1;">${name} <b>x${qty}</b></span>
-                <span style="font-weight:700;">${currency} ${(parseFloat(price) * Number(qty)).toFixed(2)}</span>
+            <div style="padding:10px 0; border-bottom:1px solid #eee; font-size:0.9rem;">
+                <div style="display:flex; justify-content:space-between;">
+                    <span style="flex:1;">${name} <b>x${qty}</b></span>
+                    <span style="font-weight:700;">${currency} ${(parseFloat(price) * Number(qty)).toFixed(2)}</span>
+                </div>
+                ${bookingReq ? `<div style="font-size:0.75rem; color:var(--accent); margin-top:2px;">Booking: ${bookingReq}</div>` : ''}
             </div>
         `;
     }).join('');

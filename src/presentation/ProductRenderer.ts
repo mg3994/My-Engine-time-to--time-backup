@@ -55,7 +55,12 @@ export class ProductRenderer {
         UIManager.toggleClass(".qty-controls", "hidden", isPrimaryService);
         UIManager.toggleClass("#add-to-cart-btn", "hidden", false);
 
-        this.renderOtherServices(offer?.seller || p.seller || (p as Service).provider, p);
+        const seller = SchemaExtractor.getFirst(variant.offers)?.seller ||
+                       SchemaExtractor.getFirst(p.offers)?.seller ||
+                       SchemaExtractor.getFirst(p.seller) ||
+                       (p as Service).provider;
+
+        this.renderOtherServices(seller, p);
     }
   }
 
@@ -288,16 +293,42 @@ export class ProductRenderer {
     const sp = UIManager.el("p-specs");
     const sl = UIManager.el("specs-list");
     if (sp && sl) {
-      const flds: any = {
-        'Model': variant.model || p.model,
-        'Material': variant.material || p.material,
-        'GTIN': variant.gtin13 || variant.gtin8 || '',
+      const getVal = (v: any) => {
+          if (!v) return null;
+          if (typeof v === 'string') return v;
+          if (typeof v === 'number') return String(v);
+          return SchemaExtractor.getFirst(v.name) || SchemaExtractor.getFirst(v.value) || SchemaExtractor.getFirst(v.text) || null;
+      };
+
+      const flds: Record<string, any> = {
+        'SKU': getVal(variant.sku || p.sku),
+        'MPN': getVal(variant.mpn || p.mpn),
+        'Model': getVal(variant.model || p.model),
+        'Brand': getVal(variant.brand || p.brand),
+        'Manufacturer': getVal(variant.manufacturer || p.manufacturer),
+        'Material': getVal(variant.material || p.material),
+        'GTIN': variant.gtin13 || variant.gtin8 || variant.gtin14 || variant.gtin || '',
         'Weight': (variant.weight || p.weight)?.value || (variant.weight || p.weight)
       };
+
       let h = '';
       for (let [l, k] of Object.entries(flds)) {
         if (k) h += `<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(0,0,0,0.05);"><span style="opacity:0.6;">${l}</span><span style="font-weight:700;">${k}</span></div>`;
       }
+
+      // Additional Properties
+      const addProps = [
+          ...SchemaExtractor.getArray(p.additionalProperty),
+          ...SchemaExtractor.getArray(variant.additionalProperty)
+      ];
+      addProps.forEach(prop => {
+          const name = SchemaExtractor.getFirst(prop.name);
+          const val = SchemaExtractor.getFirst(prop.value);
+          if (name && val) {
+              h += `<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(0,0,0,0.05);"><span style="opacity:0.6;">${name}</span><span style="font-weight:700;">${val}</span></div>`;
+          }
+      });
+
       if (h) {
         sp.style.display = "block";
         sl.innerHTML = h;
@@ -336,11 +367,24 @@ export class ProductRenderer {
     const titleEl = otherSec?.querySelector('.section-title');
     if (!otherSec || !otherList) return;
 
+    if (!s) {
+        return;
+    }
+
     const allCatalogs = SchemaExtractor.findAllCatalogs(s);
     let svcs: any[] = [];
     allCatalogs.forEach(cat => {
-        svcs.push(...SchemaExtractor.getArray(cat.itemListElement));
+        const elements = SchemaExtractor.getArray(cat.itemListElement);
+        svcs.push(...elements);
     });
+
+    // Fallback: search in p if s didn't yield anything and p is an Organization/Store
+    if (svcs.length === 0 && p !== s && (p["@type"]?.includes("Organization") || p["@type"]?.includes("Store") || p["@type"]?.includes("LocalBusiness"))) {
+        const pCatalogs = SchemaExtractor.findAllCatalogs(p);
+        pCatalogs.forEach(cat => {
+            svcs.push(...SchemaExtractor.getArray(cat.itemListElement));
+        });
+    }
 
     if (svcs.length > 0) {
       otherSec.style.display = "block";

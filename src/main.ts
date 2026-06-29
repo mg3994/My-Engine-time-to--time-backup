@@ -20,7 +20,8 @@ export class App {
     quantity: 1,
     lastClickedAttribute: null,
     selectedPackage: null,
-    verifiedLocation: null
+    verifiedLocation: null,
+    orderDelivery: null
   };
 
   private gridPageSize = 20;
@@ -103,24 +104,27 @@ export class App {
 
   private exposeGlobals(): void {
     (window as any).AntinnaEngine = this;
+
+    // Core Managers
     (window as any).CartManager = this.CartManager;
     (window as any).LocationManager = this.LocationManager;
     (window as any).CartRenderer = this.CartRenderer;
     (window as any).LocationRenderer = this.LocationRenderer;
     (window as any).GooglePayService = this.GooglePayService;
+    (window as any).GeoVerificationRenderer = this.GeoVerificationRenderer;
     (window as any).UIManager = UIManager;
 
+    // Legacy/Template compatibility: expose on window directly
     (window as any).nextSlide = () => this.goToSlide(this.state.currentSlide + 1);
     (window as any).prevSlide = () => this.goToSlide(this.state.currentSlide - 1);
     (window as any).goToSlide = (i: number) => this.goToSlide(i);
     (window as any).syncDots = (el: HTMLElement) => this.syncDots(el);
-    (window as any).showToast = (m: string, t: 'success' | 'error') => UIManager.showToast(m, t);
+    (window as any).showToast = (m: string, t: any) => UIManager.showToast(m, t);
     (window as any).loadMorePosts = () => this.loadMorePosts();
     (window as any).refreshCartData = () => this.refreshCartData();
     (window as any).startCheckout = () => this.startCheckout();
     (window as any).showOrderSummary = () => this.showOrderSummary();
     (window as any).showGeoVerification = () => this.showGeoVerification();
-    (window as any).setVerifiedLocation = (loc: any) => { this.state.verifiedLocation = loc; };
     (window as any).handleAddToCart = () => this.handleAddToCart();
     (window as any).setQuantity = (q: number) => { this.state.quantity = q; };
     (window as any).loadProductData = () => this.loadProductData();
@@ -419,10 +423,9 @@ export class App {
     }
 
     const itemToStore = { ...variant, url: window.location.href.split('?')[0].split('#')[0] };
+    const seller = SchemaExtractor.getFirst(itemToStore.offers?.seller) || SchemaExtractor.getFirst(p.seller) || p.provider;
 
-    for (let i = 0; i < this.state.quantity; i++) {
-      this.CartManager.addItem(itemToStore, itemToStore.offers?.seller || p.seller || p.provider, this.state.selectedVariants);
-    }
+    this.CartManager.addItem(itemToStore, seller, this.state.selectedVariants, this.state.quantity);
     this.CartRenderer.updateUI();
     UIManager.showToast("Added to Bag", "success");
   }
@@ -467,13 +470,21 @@ export class App {
       this.GeoVerificationRenderer.renderPopup();
   }
 
+  public setVerifiedLocation(loc: any): void {
+      this.state.verifiedLocation = loc;
+  }
+
+  public setOrderDelivery(delivery: any): void {
+      this.state.orderDelivery = delivery;
+  }
+
   public showOrderSummary(): void {
       if (!(window as any).isLoggedIn) {
           this.showLoginPrompt();
           return;
       }
       UIManager.el('antinna-geo-modal')?.classList.remove('active');
-      this.OrderSummaryRenderer.render(this.state.verifiedLocation);
+      this.OrderSummaryRenderer.render(this.state.verifiedLocation, this.state.orderDelivery);
   }
 
   private showLoginPrompt(): void {

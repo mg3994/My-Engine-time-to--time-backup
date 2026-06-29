@@ -5,7 +5,7 @@ import { SchemaExtractor } from '../core/SchemaExtractor';
 export class OrderSummaryRenderer {
   constructor(private cartManager: CartManager) {}
 
-  public render(verifiedLocation: any): void {
+  public render(verifiedLocation: any, orderDelivery?: any): void {
     let modal = UIManager.el('antinna-summary-modal');
     if (!modal) {
       modal = document.createElement('div');
@@ -16,12 +16,17 @@ export class OrderSummaryRenderer {
     }
 
     const order = this.cartManager.getOrder() as any;
+
     const itemsHtml = SchemaExtractor.getArray(order.orderedItem).map((item: any) => {
-        const { price, currency } = SchemaExtractor.extractPrice(item.orderedItem?.offers);
+        const itemOffered = item.orderedItem || item.itemOffered || item;
+        const { price, currency } = SchemaExtractor.extractPrice(itemOffered.offers || item.offers);
+        const name = SchemaExtractor.getFirst(itemOffered.name) || "Unnamed Item";
+        const qty = item.orderQuantity || item.amount?.value || 1;
+
         return `
             <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee; font-size:0.9rem;">
-                <span style="flex:1;">${SchemaExtractor.getFirst(item.orderedItem?.name)} <b>x${item.orderQuantity || 1}</b></span>
-                <span style="font-weight:700;">${currency} ${parseFloat(price) * (item.orderQuantity || 1)}</span>
+                <span style="flex:1;">${name} <b>x${qty}</b></span>
+                <span style="font-weight:700;">${currency} ${(parseFloat(price) * Number(qty)).toFixed(2)}</span>
             </div>
         `;
     }).join('');
@@ -35,9 +40,13 @@ export class OrderSummaryRenderer {
 
         <div style="margin-bottom:20px; padding:15px; background:var(--bg); border-radius:12px;">
             <div style="font-size:0.75rem; text-transform:uppercase; color:#777; margin-bottom:5px; font-weight:800;">Delivery Destination</div>
-            <div style="font-weight:700; font-size:0.95rem;">${verifiedLocation?.address || 'Verified Location'}</div>
+            <div style="font-weight:700; font-size:0.95rem;">
+                ${orderDelivery ?
+                  `${orderDelivery.deliveryAddress.extendedAddress}, ${orderDelivery.deliveryAddress.streetAddress}, ${orderDelivery.deliveryAddress.addressLocality}` :
+                  (verifiedLocation?.address || 'Verified Location')}
+            </div>
             <div style="font-size:0.8rem; color:var(--accent); margin-top:4px;">
-                Distance: ${verifiedLocation?.distance} | Est. Time: ${verifiedLocation?.duration}
+                Distance: ${verifiedLocation?.distance || '--'} | Est. Time: ${verifiedLocation?.duration || '--'}
             </div>
         </div>
 

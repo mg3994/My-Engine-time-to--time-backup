@@ -78,10 +78,9 @@ export class CartManager {
       return items.every(item => this.isItemOrderable(item) && this.isItemQuantityValid(item));
   }
 
-  addItem(item: Product | Service, seller?: Organization, selectedVariants?: Record<string, string>): void {
+  addItem(item: Product | Service, seller?: Organization, selectedVariants?: Record<string, string>, quantity: number = 1): void {
     const availability = SchemaExtractor.extractAvailability(item.offers);
     if (availability === "https://schema.org/OutOfStock") {
-        // Prevent adding if out of stock
         return;
     }
 
@@ -97,26 +96,24 @@ export class CartManager {
     );
 
     const { minValue, maxValue } = SchemaExtractor.extractEligibleQuantity(item);
+    const initialQty = Math.max(quantity, minValue || 1);
 
     if (existing) {
-      if (maxValue !== null && (existing as any).orderQuantity >= maxValue) {
+      const currentQty = (existing as any).orderQuantity || 0;
+      const newQty = currentQty + quantity;
+
+      if (maxValue !== null && newQty > maxValue) {
           const UIManager = (window as any).UIManager;
           if (UIManager) UIManager.showToast(`Maximum limit of ${maxValue} reached for this item`, "error");
-          return;
+          (existing as any).orderQuantity = maxValue;
+      } else {
+          (existing as any).orderQuantity = newQty;
       }
-      (existing as any).orderQuantity = ((existing as any).orderQuantity || 0) + 1;
     } else {
-      const specs: any = {};
-      const fields = [
-        'material', 'color', 'size', 'gtin13', 'sku',
-        'weight', 'height', 'width', 'depth', 'description'
-      ];
-
-      fields.forEach(field => {
-        if ((item as any)[field]) specs[field] = (item as any)[field];
-      });
-
       const itemCopy = JSON.parse(JSON.stringify(item));
+
+      // Ensure quantity doesn't exceed max on first add
+      const finalInitialQty = maxValue !== null ? Math.min(initialQty, maxValue) : initialQty;
 
       orderedItems.push({
         "@type": "OrderItem",
@@ -125,7 +122,7 @@ export class CartManager {
           url: item.url,
           _selectedVariants: selectedVariants ? { ...selectedVariants } : undefined
         },
-        orderQuantity: 1,
+        orderQuantity: finalInitialQty,
         seller: seller ? JSON.parse(JSON.stringify(seller)) : undefined,
         itemKey: itemKey,
         _constraints: { minValue, maxValue }

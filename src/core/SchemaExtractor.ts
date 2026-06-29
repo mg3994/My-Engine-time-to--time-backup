@@ -87,25 +87,32 @@ export class SchemaExtractor {
       return null;
   }
 
-  static findAllCatalogs(obj: any, results: any[] = []): any[] {
-      if (!obj || typeof obj !== 'object') return results;
+  static findAllCatalogs(obj: any): any[] {
+      const results: any[] = [];
+      const stack = [obj];
+      const seen = new Set();
 
-      if (obj.hasOfferCatalog) {
-          this.getArray(obj.hasOfferCatalog).forEach(cat => results.push(cat));
-      }
+      while (stack.length > 0) {
+          const current = stack.pop();
+          if (!current || typeof current !== 'object' || seen.has(current)) continue;
+          seen.add(current);
 
-      // Recursive search
-      if (Array.isArray(obj)) {
-          obj.forEach(item => this.findAllCatalogs(item, results));
-      } else {
-          Object.entries(obj).forEach(([key, val]) => {
-              if (key === 'hasOfferCatalog') return; // already handled
-              if (val && typeof val === 'object') {
-                  this.findAllCatalogs(val, results);
+          if (current.hasOfferCatalog) {
+              const catalogs = this.getArray(current.hasOfferCatalog);
+              results.push(...catalogs);
+              stack.push(...catalogs);
+          }
+
+          if (Array.isArray(current)) {
+              stack.push(...current);
+          } else {
+              for (const [key, val] of Object.entries(current)) {
+                  if (key !== 'hasOfferCatalog' && val && typeof val === 'object') {
+                      stack.push(val);
+                  }
               }
-          });
+          }
       }
-
       return results;
   }
 

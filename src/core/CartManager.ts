@@ -96,11 +96,11 @@ export class CartManager {
     );
 
     const { minValue, maxValue } = SchemaExtractor.extractEligibleQuantity(item);
-    const initialQty = Math.max(quantity, minValue || 1);
+    const initialQty = Math.max(Number(quantity), minValue || 1);
 
     if (existing) {
-      const currentQty = (existing as any).orderQuantity || 0;
-      const newQty = currentQty + quantity;
+      const currentQty = Number((existing as any).orderQuantity || 0);
+      const newQty = currentQty + Number(quantity);
 
       if (maxValue !== null && newQty > maxValue) {
           const UIManager = (window as any).UIManager;
@@ -256,7 +256,7 @@ export class CartManager {
 
   getTotalQuantity(): number {
     const orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
-    return orderedItems.reduce((sum: number, item: any) => sum + (item.orderQuantity || 0), 0);
+    return orderedItems.reduce((sum: number, item: any) => sum + Number(item.orderQuantity || 0), 0);
   }
 
   clear(): void {

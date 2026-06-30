@@ -193,12 +193,15 @@ export class CartManager {
       const cartItem = item.orderedItem;
       const dataSources = Array.isArray(freshBaseData) ? freshBaseData : [freshBaseData];
 
+      const normalizedCartName = SchemaExtractor.normalizeName(cartItem.name);
+
       for (const source of dataSources) {
-          const allCatalogs = SchemaExtractor.findAllCatalogs(source);
-          for (const catalog of allCatalogs) {
-              const matchedPackage = SchemaExtractor.findMatchingServicePackage({ hasOfferCatalog: catalog }, cartItem.name);
-              if (matchedPackage) {
-                  freshMatch = matchedPackage;
+          const allServices = SchemaExtractor.findAllServices(source);
+          for (const serviceOffer of allServices) {
+              const item = serviceOffer.itemOffered || serviceOffer;
+              const name = SchemaExtractor.getFirst(item.name) || SchemaExtractor.getFirst(serviceOffer.name);
+              if (SchemaExtractor.normalizeName(name as string) === normalizedCartName) {
+                  freshMatch = serviceOffer;
                   break;
               }
           }

@@ -87,7 +87,7 @@ export class SchemaExtractor {
       return null;
   }
 
-  static findAllCatalogs(obj: any): any[] {
+  static findAllServices(obj: any): any[] {
       const results: any[] = [];
       const stack = [obj];
       const seen = new Set();
@@ -97,17 +97,28 @@ export class SchemaExtractor {
           if (!current || typeof current !== 'object' || seen.has(current)) continue;
           seen.add(current);
 
+          // Find via OfferCatalog
           if (current.hasOfferCatalog) {
               const catalogs = this.getArray(current.hasOfferCatalog);
-              results.push(...catalogs);
-              stack.push(...catalogs);
+              catalogs.forEach(cat => {
+                  const elements = this.getArray(cat.itemListElement);
+                  results.push(...elements);
+                  stack.push(cat);
+              });
           }
 
+          // Find via addOn
+          if (current.addOn) {
+              results.push(...this.getArray(current.addOn));
+          }
+
+          // Direct items in an array
           if (Array.isArray(current)) {
               stack.push(...current);
           } else {
+              // Descend into other objects
               for (const [key, val] of Object.entries(current)) {
-                  if (key !== 'hasOfferCatalog' && val && typeof val === 'object') {
+                  if (key !== 'hasOfferCatalog' && key !== 'addOn' && val && typeof val === 'object') {
                       stack.push(val);
                   }
               }
@@ -159,8 +170,8 @@ export class SchemaExtractor {
       const max = this.getFirst(eq.maxValue);
 
       return {
-          minValue: min !== undefined ? Number(min) : null,
-          maxValue: max !== undefined ? Number(max) : null
+          minValue: (min !== undefined && min !== null) ? Number(min) : null,
+          maxValue: (max !== undefined && max !== null) ? Number(max) : null
       };
   }
 

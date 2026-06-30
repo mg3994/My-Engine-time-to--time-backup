@@ -60,7 +60,7 @@ export class ProductRenderer {
                        SchemaExtractor.getFirst(p.seller) ||
                        (p as Service).provider;
 
-        this.renderOtherServices(seller, p);
+        this.renderOtherServices(seller, variant);
     }
   }
 
@@ -371,18 +371,15 @@ export class ProductRenderer {
         return;
     }
 
-    const allCatalogs = SchemaExtractor.findAllCatalogs(s);
-    let svcs: any[] = [];
-    allCatalogs.forEach(cat => {
-        const elements = SchemaExtractor.getArray(cat.itemListElement);
-        svcs.push(...elements);
-    });
+    const svcs = SchemaExtractor.findAllServices(s);
 
-    // Fallback: search in p if s didn't yield anything and p is an Organization/Store
-    if (svcs.length === 0 && p !== s && (p["@type"]?.includes("Organization") || p["@type"]?.includes("Store") || p["@type"]?.includes("LocalBusiness"))) {
-        const pCatalogs = SchemaExtractor.findAllCatalogs(p);
-        pCatalogs.forEach(cat => {
-            svcs.push(...SchemaExtractor.getArray(cat.itemListElement));
+    // Fallback: search in p as well
+    if (p !== s) {
+        const pSvcs = SchemaExtractor.findAllServices(p);
+        pSvcs.forEach(ps => {
+            if (!svcs.find(s => (s.itemOffered?.name || s.name) === (ps.itemOffered?.name || ps.name))) {
+                svcs.push(ps);
+            }
         });
     }
 

@@ -38,7 +38,7 @@ export class CartManager {
       orderedItems.forEach((item: any) => {
           const key = item.itemKey || this.generateItemKey(item.orderedItem, item._selectedVariants);
           if (uniqueItems[key]) {
-              uniqueItems[key].orderQuantity += item.orderQuantity;
+              uniqueItems[key].orderQuantity += Number(item.orderQuantity || 0);
           } else {
               item.itemKey = key;
               uniqueItems[key] = item;
@@ -55,7 +55,7 @@ export class CartManager {
     this.order.totalPrice = orderedItems.reduce((sum: number, item: any) => {
       if (!this.isItemOrderable(item)) return sum;
       const { price } = SchemaExtractor.extractPrice(item.orderedItem.offers);
-      return sum + (parseFloat(price) * (item.orderQuantity || 1));
+      return sum + (parseFloat(price) * Number(item.orderQuantity || 1));
     }, 0);
   }
 
@@ -68,7 +68,7 @@ export class CartManager {
 
   public isItemQuantityValid(item: any): boolean {
       const min = item._constraints?.minValue;
-      if (min !== null && min !== undefined && (item.orderQuantity || 1) < min) return false;
+      if (min !== null && min !== undefined && Number(item.orderQuantity || 1) < min) return false;
       return true;
   }
 
@@ -78,7 +78,7 @@ export class CartManager {
       return items.every(item => this.isItemOrderable(item) && this.isItemQuantityValid(item));
   }
 
-  addItem(item: Product | Service, seller?: Organization, selectedVariants?: Record<string, string>, quantity: number = 1): void {
+  addItem(item: Product | Service, seller?: Organization, selectedVariants?: Record<string, string>, quantity: number = 1, parentItemKey?: string): void {
     const availability = SchemaExtractor.extractAvailability(item.offers);
     if (availability === "https://schema.org/OutOfStock") {
         return;
@@ -90,6 +90,15 @@ export class CartManager {
 
     const itemKey = this.generateItemKey(item, selectedVariants);
     const orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
+
+    if (parentItemKey) {
+        const parentExists = orderedItems.some((oi: any) => oi.itemKey === parentItemKey);
+        if (!parentExists) {
+            const UIManager = (window as any).UIManager;
+            if (UIManager) UIManager.showToast("Please add the main product first", "error");
+            return;
+        }
+    }
 
     const existing = orderedItems.find(
       (oi: any) => oi.itemKey === itemKey
@@ -111,8 +120,6 @@ export class CartManager {
       }
     } else {
       const itemCopy = JSON.parse(JSON.stringify(item));
-
-      // Ensure quantity doesn't exceed max on first add
       const finalInitialQty = maxValue !== null ? Math.min(initialQty, maxValue) : initialQty;
 
       orderedItems.push({
@@ -125,6 +132,7 @@ export class CartManager {
         orderQuantity: finalInitialQty,
         seller: seller ? JSON.parse(JSON.stringify(seller)) : undefined,
         itemKey: itemKey,
+        parentItemKey: parentItemKey,
         _constraints: { minValue, maxValue }
       } as any);
       this.order.orderedItem = orderedItems;
@@ -132,7 +140,7 @@ export class CartManager {
     this.saveToStorage();
   }
 
-  private generateItemKey(item: Product | Service | any, variants?: Record<string, string>): string {
+  public static generateItemKey(item: Product | Service | any, variants?: Record<string, string>): string {
     let url = SchemaExtractor.getFirst(item.url) || '';
     if (url.includes('?')) url = url.split('?')[0];
     if (url.includes('#')) url = url.split('#')[0];
@@ -151,11 +159,26 @@ export class CartManager {
     return `${url}::${type}::${sku}::${name}::${variantString}`;
   }
 
+  public generateItemKey(item: Product | Service | any, variants?: Record<string, string>): string {
+    return CartManager.generateItemKey(item, variants);
+  }
+
   removeItem(index: number): void {
     const orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
     if (index < 0 || index >= orderedItems.length) return;
+
+    const removedItem = orderedItems[index] as any;
+    const removedItemKey = removedItem.itemKey;
+
+    // Remove the item itself
     orderedItems.splice(index, 1);
-    this.order.orderedItem = orderedItems;
+
+    // Cascading removal for add-ons
+    const remainingItems = orderedItems.filter((item: any) => {
+        return item.parentItemKey !== removedItemKey;
+    });
+
+    this.order.orderedItem = remainingItems;
     this.saveToStorage();
   }
 
@@ -164,7 +187,7 @@ export class CartManager {
     const item = orderedItems[index] as any;
     if (!item) return;
 
-    const newQty = (item.orderQuantity || 0) + delta;
+    const newQty = Number(item.orderQuantity || 0) + delta;
     const max = item._constraints?.maxValue;
 
     if (delta > 0 && max !== null && max !== undefined && newQty > max) {

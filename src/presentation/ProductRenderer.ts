@@ -60,8 +60,25 @@ export class ProductRenderer {
                        SchemaExtractor.getFirst(p.seller) ||
                        (p as Service).provider;
 
-        this.renderOtherServices(seller, variant);
+        const addons = this.renderAddOns(variant, seller);
+        this.renderOtherServices(seller, variant, addons);
     }
+  }
+
+  private renderAddOns(variant: any, seller: any): any[] {
+      const addonSec = UIManager.el("product-addons");
+      const addonList = UIManager.el("product-addons-list");
+      if (!addonSec || !addonList) return [];
+
+      const addons = SchemaExtractor.getArray(variant.addOn);
+      if (addons.length > 0) {
+          addonSec.style.display = "block";
+          addonList.innerHTML = this.generateServiceCardsHtml(addons, variant, seller, true);
+          return addons;
+      } else {
+          addonSec.style.display = "none";
+          return [];
+      }
   }
 
   private renderBusinessView(b: any): void {
@@ -361,7 +378,7 @@ export class ProductRenderer {
     }
   }
 
-  private renderOtherServices(s: Organization | any, p: any): void {
+  private renderOtherServices(s: Organization | any, p: any, excludeItems: any[] = []): void {
     const otherSec = UIManager.el("other-services");
     const otherList = UIManager.el("other-services-list");
     const titleEl = otherSec?.querySelector('.section-title');
@@ -371,7 +388,7 @@ export class ProductRenderer {
         return;
     }
 
-    const svcs = SchemaExtractor.findAllServices(s);
+    let svcs = SchemaExtractor.findAllServices(s);
 
     // Fallback: search in p as well
     if (p !== s) {
@@ -383,6 +400,13 @@ export class ProductRenderer {
         });
     }
 
+    // Filter out items already shown in Add-ons
+    const excludeNames = excludeItems.map(item => SchemaExtractor.getFirst((item.itemOffered || item).name));
+    svcs = svcs.filter(svc => {
+        const name = SchemaExtractor.getFirst((svc.itemOffered || svc).name);
+        return !excludeNames.includes(name);
+    });
+
     if (svcs.length > 0) {
       otherSec.style.display = "block";
 
@@ -391,7 +415,14 @@ export class ProductRenderer {
           titleEl.textContent = isBusiness ? "Deals In / Our Services" : "Optional Product-Related Services";
       }
 
-      otherList.innerHTML = svcs.map((ser: any) => {
+      otherList.innerHTML = this.generateServiceCardsHtml(svcs, p, s, false);
+    } else {
+      otherSec.style.display = "none";
+    }
+  }
+
+  private generateServiceCardsHtml(items: any[], p: any, s: any, isAddon: boolean): string {
+      return items.map((ser: any) => {
         const rawItem = SchemaExtractor.getFirst(ser.itemOffered) || ser;
         const n = SchemaExtractor.getFirst(rawItem.name) || SchemaExtractor.getFirst(ser.name);
         const { price, currency } = SchemaExtractor.extractPrice(ser);
@@ -428,12 +459,21 @@ export class ProductRenderer {
 
         const itemJson = JSON.stringify(itemWithUrl).replace(/"/g, '&quot;');
         const sellerJson = JSON.stringify(s).replace(/"/g, '&quot;');
-        let btnH = `<button class="v-btn" style="width:100%;padding:10px;font-size:0.85rem;" onclick="CartManager.addItem(${itemJson}, ${sellerJson}); CartRenderer.updateUI(); showToast('Service Added', 'success');">Add Service</button>`;
+
+        let parentKeyParam = 'undefined';
+        if (isAddon) {
+            const engine = (window as any).AntinnaEngine;
+            const variant = SchemaExtractor.findMatchingVariant(engine.state.product, engine.state.selectedVariants, engine.state.lastClickedAttribute);
+            const variantWithUrl = { ...variant, url: window.location.href.split('?')[0].split('#')[0] };
+            const parentKey = engine.CartManager.generateItemKey(variantWithUrl, engine.state.selectedVariants);
+            parentKeyParam = `'${parentKey}'`;
+        }
+
+        const btnLabel = isAddon ? 'Add Add-on' : 'Add Service';
+        const successMsg = isAddon ? 'Add-on Added' : 'Service Added';
+        let btnH = `<button class="v-btn" style="width:100%;padding:10px;font-size:0.85rem;" onclick="addItem(${itemJson}, ${sellerJson}, undefined, 1, ${parentKeyParam}); showToast('${successMsg}', 'success');">${btnLabel}</button>`;
 
         return `<div class="h-card"><div style="font-weight:700;margin-bottom:10px;height:3em;overflow:hidden;">${n}</div><div class="price" style="font-size:1.2rem;margin-bottom:15px;">${price !== "0" ? currency + ' ' + price : 'Free/Included'}</div>${constraintText}${bookingText}${btnH}</div>`;
       }).join('');
-    } else {
-      otherSec.style.display = "none";
-    }
   }
 }

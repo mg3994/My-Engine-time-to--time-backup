@@ -122,6 +122,18 @@ export class App {
     (window as any).showToast = (m: string, t: any) => UIManager.showToast(m, t);
     (window as any).loadMorePosts = () => this.loadMorePosts();
     (window as any).refreshCartData = () => this.refreshCartData();
+    (window as any).addItem = (item: any, seller: any, variants: any, quantity: any, parentKey: any) => {
+        this.CartManager.addItem(item, seller, variants, quantity, parentKey);
+        this.CartRenderer.updateUI();
+    };
+    (window as any).removeItem = (idx: number) => {
+        this.CartManager.removeItem(idx);
+        this.CartRenderer.updateUI();
+    };
+    (window as any).updateQty = (idx: number, delta: number) => {
+        this.CartManager.updateQty(idx, delta);
+        this.CartRenderer.updateUI();
+    };
     (window as any).startCheckout = () => this.startCheckout();
     (window as any).showOrderSummary = () => this.showOrderSummary();
     (window as any).showGeoVerification = () => this.showGeoVerification();

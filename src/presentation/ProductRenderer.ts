@@ -5,6 +5,8 @@ import { SchemaExtractor } from '../core/SchemaExtractor';
 import { CartManager } from '../core/CartManager';
 
 export class ProductRenderer {
+  constructor(private cartManager: CartManager) {}
+
   render(p: Product | ProductGroup | Service | any, state: AppState, onVariantChange: (attr: string, val: string) => void): void {
     const isBusiness = p["@type"] === "LocalBusiness" || p["@type"] === "Store" || p["@type"] === "Organization";
     const isPrimaryService = p["@type"] === "Service";
@@ -51,6 +53,7 @@ export class ProductRenderer {
         this.renderQuantityConstraints(offer);
         this.renderVariants(p, state, onVariantChange);
         this.renderSpecs(variant, p);
+        this.renderRatings(variant, p);
 
         UIManager.toggleClass(".qty-controls", "hidden", isPrimaryService);
         UIManager.toggleClass("#add-to-cart-btn", "hidden", false);
@@ -71,7 +74,12 @@ export class ProductRenderer {
       if (!addonSec || !addonList) return [];
 
       const addons = SchemaExtractor.getArray(variant.addOn);
-      if (addons.length > 0) {
+
+      const variantWithUrl = { ...variant, url: window.location.href.split('?')[0].split('#')[0] };
+      const parentKey = CartManager.generateItemKey(variantWithUrl, (window as any).AntinnaEngine.state.selectedVariants);
+      const isParentInCart = this.cartManager.hasItem(parentKey);
+
+      if (addons.length > 0 && isParentInCart) {
           addonSec.style.display = "block";
           addonList.innerHTML = this.generateServiceCardsHtml(addons, variant, seller, true);
           return addons;
@@ -317,6 +325,9 @@ export class ProductRenderer {
       };
 
       const flds: Record<string, any> = {
+        'Category': getVal(variant.category || p.category),
+        'Condition': (variant.itemCondition || p.itemCondition)?.split('/').pop()?.replace('Condition', '') || '',
+        'Origin': getVal(variant.countryOfOrigin || p.countryOfOrigin),
         'SKU': getVal(variant.sku || p.sku),
         'MPN': getVal(variant.mpn || p.mpn),
         'Model': getVal(variant.model || p.model),
@@ -324,7 +335,8 @@ export class ProductRenderer {
         'Manufacturer': getVal(variant.manufacturer || p.manufacturer),
         'Material': getVal(variant.material || p.material),
         'GTIN': variant.gtin13 || variant.gtin8 || variant.gtin14 || variant.gtin || '',
-        'Weight': (variant.weight || p.weight)?.value || (variant.weight || p.weight)
+        'Weight': (variant.weight || p.weight)?.value || (variant.weight || p.weight),
+        'Keywords': SchemaExtractor.getArray(variant.keywords || p.keywords).map(k => getVal(k)).filter(Boolean).join(', ')
       };
 
       let h = '';
@@ -348,6 +360,63 @@ export class ProductRenderer {
         sp.style.display = "none";
       }
     }
+  }
+
+  private renderRatings(variant: any, p: any): void {
+      const ar = SchemaExtractor.getFirst(variant.aggregateRating || p.aggregateRating);
+      const reviews = SchemaExtractor.getArray(variant.review || p.review || variant.reviews || p.reviews);
+
+      let container = UIManager.el("product-reviews");
+      if (!container) {
+          container = document.createElement('div');
+          container.id = "product-reviews";
+          UIManager.el("details-section")?.appendChild(container);
+      }
+
+      if (!ar && reviews.length === 0) {
+          container.style.display = "none";
+          return;
+      }
+      container.style.display = "block";
+
+      let h = `<h3 class="section-title">Ratings & Reviews</h3>`;
+
+      if (ar) {
+          const val = Number(SchemaExtractor.getFirst(ar.ratingValue) || 0);
+          const count = SchemaExtractor.getFirst(ar.reviewCount) || SchemaExtractor.getFirst(ar.ratingCount) || 0;
+          h += `
+            <div style="display:flex; align-items:center; gap:15px; margin-bottom:20px; background:var(--bg); padding:20px; border-radius:15px;">
+                <div style="font-size:3rem; font-weight:900; color:var(--accent); line-height:1;">${val.toFixed(1)}</div>
+                <div>
+                    <div style="color:#f1c40f; font-size:1.2rem;">${"★".repeat(Math.round(val))}${"☆".repeat(5-Math.round(val))}</div>
+                    <div style="font-size:0.85rem; opacity:0.6; font-weight:700;">Based on ${count} reviews</div>
+                </div>
+            </div>
+          `;
+      }
+
+      if (reviews.length > 0) {
+          h += `<div style="display:flex; flex-direction:column; gap:15px;">`;
+          reviews.slice(0, 5).forEach(rev => {
+              const rVal = Number(SchemaExtractor.getFirst(rev.reviewRating?.ratingValue) || 5);
+              const author = SchemaExtractor.getFirst(rev.author?.name) || SchemaExtractor.getFirst(rev.author) || "Anonymous";
+              const body = SchemaExtractor.getFirst(rev.reviewBody) || "";
+              const date = SchemaExtractor.getFirst(rev.datePublished) || "";
+              h += `
+                <div style="border-bottom:1px solid rgba(0,0,0,0.05); padding-bottom:15px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                        <span style="font-weight:800; font-size:0.9rem;">${author}</span>
+                        <span style="color:#f1c40f;">${"★".repeat(rVal)}</span>
+                    </div>
+                    <div style="font-size:0.85rem; opacity:0.8; line-height:1.5;">${body}</div>
+                    ${date ? `<div style="font-size:0.7rem; opacity:0.4; margin-top:5px; font-weight:700;">${new Date(date).toLocaleDateString()}</div>` : ''}
+                </div>
+              `;
+          });
+          h += `</div>`;
+      }
+
+      container.innerHTML = h;
   }
 
   renderSeller(s: Organization | any): void {
@@ -445,8 +514,8 @@ export class ProductRenderer {
 
         const bookingText = bookingReq ? `<div style="font-size:0.7rem; color:var(--accent); font-weight:700; margin-bottom:8px;">Booking: ${bookingReq}</div>` : '';
 
-        const itemJson = JSON.stringify(itemWithUrl).replace(/"/g, '&quot;');
-        const sellerJson = JSON.stringify(s).replace(/"/g, '&quot;');
+        const itemJson = ((JSON.stringify(itemWithUrl) || 'null').replace)(/"/g, '&quot;');
+        const sellerJson = ((JSON.stringify(s) || 'null').replace)(/"/g, '&quot;');
 
         let parentKeyParam = 'undefined';
         if (isAddon) {

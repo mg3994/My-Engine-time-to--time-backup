@@ -36,7 +36,7 @@ export class App {
   public BloggerDataService = new BloggerDataService();
   public GooglePayService = new GooglePayService();
 
-  public ProductRenderer = new ProductRenderer();
+  public ProductRenderer = new ProductRenderer(this.CartManager);
   public CartRenderer = new CartRenderer(this.CartManager);
   public LocationRenderer = new LocationRenderer(this.LocationManager);
   public GeoVerificationRenderer = new GeoVerificationRenderer(this.LocationManager);
@@ -85,14 +85,17 @@ export class App {
 
     (window as any).addItem = (item: any, seller: any, variants: any, quantity: any, parentKey: any) => {
         this.CartManager.addItem(item, seller, variants, quantity, parentKey);
+        this.refreshProductUI();
         this.CartRenderer.updateUI();
     };
     (window as any).removeItem = (idx: number) => {
         this.CartManager.removeItem(idx);
+        this.refreshProductUI();
         this.CartRenderer.updateUI();
     };
     (window as any).updateQty = (idx: number, delta: number) => {
         this.CartManager.updateQty(idx, delta);
+        this.refreshProductUI();
         this.CartRenderer.updateUI();
     };
 
@@ -154,15 +157,21 @@ export class App {
     const p = SchemaExtractor.extractJsonLd<any>(raw.innerHTML);
     if (p) {
         this.state.product = p;
-        this.ProductRenderer.render(p, this.state, (a, v) => {
-          this.state.selectedVariants[a] = v;
-          this.state.lastClickedAttribute = a;
-          this.ProductRenderer.render(p, this.state, (a, v) => {});
-        });
+        this.refreshProductUI();
         UIManager.toggleClass("#initializing-state", "hidden", true);
         UIManager.toggleClass("#carousel-section", "hidden", false);
         UIManager.toggleClass("#details-section", "hidden", false);
     }
+  }
+
+  private refreshProductUI(): void {
+      if (this.state.product) {
+          this.ProductRenderer.render(this.state.product, this.state, (a, v) => {
+              this.state.selectedVariants[a] = v;
+              this.state.lastClickedAttribute = a;
+              this.refreshProductUI();
+          });
+      }
   }
 
   public async loadGridData(): Promise<void> {
@@ -377,6 +386,7 @@ export class App {
     const seller = SchemaExtractor.getFirst(itemToStore.offers?.seller) || SchemaExtractor.getFirst(p.seller) || p.provider;
 
     this.CartManager.addItem(itemToStore, seller, this.state.selectedVariants, this.state.quantity);
+    this.refreshProductUI();
     this.CartRenderer.updateUI();
     UIManager.showToast("Added to Bag", "success");
   }

@@ -98,9 +98,7 @@ export class CartManager {
         }
     }
 
-    const existing = orderedItems.find((oi: any) => oi.itemKey === itemKey);
-    const { minValue, maxValue } = SchemaExtractor.extractEligibleQuantity(item);
-    const qtyToAdd = Number(quantity);
+    const { minValue, maxValue } = SchemaExtractor.extractEligibleQuantity(item); const qtyToAdd = Number(quantity); const existing = orderedItems.find((oi: any) => oi.itemKey === itemKey);
 
     if (existing) {
       const currentQty = Number(existing.orderQuantity || 0);
@@ -281,5 +279,9 @@ export class CartManager {
   clear(): void {
     this.order.orderedItem = [];
     this.saveToStorage();
+  }
+
+  public hasItem(itemKey: string): boolean {
+      return SchemaExtractor.getArray(this.order.orderedItem).some((oi: any) => oi.itemKey === itemKey);
   }
 }

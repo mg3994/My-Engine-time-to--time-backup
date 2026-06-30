@@ -27,9 +27,9 @@ export class AppsScriptService {
     };
 
     try {
-      const response = await fetch(this.url, {
+      await fetch(this.url, {
         method: 'POST',
-        mode: 'no-cors', // Apps Script often requires no-cors for simple POSTs
+        mode: 'no-cors',
         headers: {
           'Content-Type': 'application/json'
         },
@@ -86,7 +86,15 @@ export class AppsScriptService {
                   lat: params.pinLat || 28.6139,
                   lng: params.pinLng || 77.2090,
                   distance: "15.5 km",
-                  duration: "35 mins"
+                  duration: "35 mins",
+                  addressDetails: {
+                      extendedAddress: "3rd Floor, Plot No. 42, ABC Towers",
+                      streetAddress: "Sector 14",
+                      addressLocality: "Rohtak",
+                      addressRegion: "HR",
+                      postalCode: "124001",
+                      addressCountry: "IN"
+                  }
               };
           case 'createOrder': return { status: "success", orderId: "ANT-MOCK-123", message: "Mock order created" };
           default: return { status: "error", message: "Unknown action" };

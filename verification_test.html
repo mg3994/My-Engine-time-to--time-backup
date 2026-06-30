@@ -3,14 +3,17 @@
 <head>
     <title>Blogger Test</title>
     <style>
+        :root { --accent: #e67e22; --text: #333; --card: #fff; --bg: #f8f9fa; }
         .hidden { display: none !important; }
         .active { display: block !important; }
         .cart-fab { position: fixed; bottom: 20px; right: 20px; width: 50px; height: 50px; background: orange; border-radius: 50%; }
         .cart-count { background: red; color: white; border-radius: 50%; padding: 2px 6px; }
-        .cart-drawer { position: fixed; right: -400px; top: 0; width: 300px; height: 100%; background: white; transition: right 0.3s; }
+        .cart-drawer { position: fixed; right: -400px; top: 0; width: 300px; height: 100%; background: white; transition: right 0.3s; z-index: 5000; }
         .cart-drawer.active { right: 0; }
-        .modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; }
+        .modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; z-index: 4000; }
         .modal-backdrop.active { display: block; }
+        .h-card { border: 1px solid #ddd; padding: 15px; margin-bottom: 10px; border-radius: 8px; }
+        .v-btn { background: #e67e22; color: #fff; border: none; padding: 10px; cursor: pointer; border-radius: 5px; }
     </style>
 </head>
 <body>
@@ -25,9 +28,7 @@
         <div id="p-price"></div>
         <div id="stock-badge-container"></div>
         <div id="p-variants"></div>
-        <div id="p-specs">
-            <div id="specs-list"></div>
-        </div>
+        <div id="p-specs"><div id="specs-list"></div></div>
         <div class="qty-controls">
             <button id="qty-minus">-</button>
             <span id="qty-val">1</span>
@@ -41,8 +42,13 @@
         <a id="maps-link" href="#">Map</a>
     </div>
 
+    <div id="product-addons" style="display:none;">
+        <h3 class="section-title">Product Add-ons</h3>
+        <div id="product-addons-list"></div>
+    </div>
+
     <div id="other-services" style="display:none;">
-        <h3>Other Services</h3>
+        <h3 class="section-title">Other Services</h3>
         <div id="other-services-list"></div>
     </div>
 
@@ -59,11 +65,7 @@
 
     <div id="loc-modal-backdrop" class="modal-backdrop">
         <div class="modal-content">
-            <button class="loc-btn" onclick="window.LocationRenderer.handleRequestLocation()">
-                <span>🎯</span> Detect My Location
-            </button>
-            <input id="modal-pin-input" />
-            <button onclick="LocationRenderer.handleSetPin()">Set Pin</button>
+            <button class="loc-btn" onclick="window.LocationRenderer.hideModal()">Close</button>
         </div>
     </div>
     <input id="loc-display-v2" />
@@ -71,51 +73,52 @@
     <div id="post-body-raw" class="hidden">
         <script type="application/ld+json">
         {
-            "@context": "https://schema.org",
-            "@type": "Product",
-            "name": "Super Smartphone",
-            "description": "A great phone",
-            "image": "https://via.placeholder.com/150",
-            "offers": {
+          "@context": "https://schema.org",
+          "@type": "ProductGroup",
+          "name": "Elite Crewneck Collection",
+          "description": "Premium organic cotton collection.",
+          "productGroupID": "elite-crew-series",
+          "aggregateRating": {
+            "@type": "AggregateRating",
+            "ratingValue": "4.8",
+            "reviewCount": "124"
+          },
+          "review": [
+            {
+              "@type": "Review",
+              "author": { "@type": "Person", "name": "Jane Doe" },
+              "reviewBody": "Excellent quality!",
+              "reviewRating": { "@type": "Rating", "ratingValue": "5" },
+              "datePublished": "2024-01-15"
+            }
+          ],
+          "variesBy": ["size"],
+          "hasVariant": [
+            {
+              "@type": "Product",
+              "name": "Elite Crewneck - Midnight Blue (Large)",
+              "sku": "EC-MB-L-001",
+              "size": "Large",
+              "offers": {
                 "@type": "Offer",
-                "price": "49999",
+                "price": "38851.00",
                 "priceCurrency": "INR",
-                "availability": "https://schema.org/InStock",
-                "seller": {
-                    "@type": "Organization",
-                    "name": "Antinna Shop",
-                    "hasOfferCatalog": {
-                        "@type": "OfferCatalog",
-                        "itemListElement": [
-                            {
-                                "@type": "Offer",
-                                "itemOffered": {
-                                    "@type": "Service",
-                                    "name": "Screen Protection",
-                                    "offers": { "price": "999", "priceCurrency": "INR" }
-                                }
-                            }
-                        ]
-                    }
-                }
-            },
-            "variesBy": ["color"],
-            "hasVariant": [
+                "availability": "https://schema.org/InStock"
+              },
+              "addOn": [
                 {
-                    "@type": "Product",
-                    "name": "Super Smartphone Black",
-                    "color": "Black",
-                    "sku": "PHONE-BLK",
-                    "offers": { "price": "49999", "priceCurrency": "INR", "availability": "https://schema.org/InStock" }
-                },
-                {
-                    "@type": "Product",
-                    "name": "Super Smartphone White",
-                    "color": "White",
-                    "sku": "PHONE-WHT",
-                    "offers": { "price": "50999", "priceCurrency": "INR", "availability": "https://schema.org/InStock" }
+                  "@type": "Offer",
+                  "price": "499.00",
+                  "priceCurrency": "INR",
+                  "eligibleQuantity": { "@type": "QuantitativeValue", "minValue": 1, "maxValue": 3 },
+                  "itemOffered": {
+                    "@type": "Service",
+                    "name": "Premium Gift Wrapping"
+                  }
                 }
-            ]
+              ]
+            }
+          ]
         }
         </script>
     </div>

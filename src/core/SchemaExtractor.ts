@@ -1,4 +1,15 @@
 export class SchemaExtractor {
+  static getFirst<T>(val: T | T[] | undefined): T | undefined {
+    if (Array.isArray(val)) return val[0];
+    return val;
+  }
+
+  static getArray<T>(val: T | T[] | undefined): T[] {
+    if (val === undefined || val === null) return [];
+    if (Array.isArray(val)) return val;
+    return [val];
+  }
+
   static decodeEntities(text: string): string {
     if (!text) return "";
     const textarea = document.createElement("textarea");
@@ -41,14 +52,14 @@ export class SchemaExtractor {
 
   static findMatchingVariant(parent: any, selectedAttributes: Record<string, string>, lastClickedAttr: string | null = null): any {
     if (!parent) return null;
-    const variants = parent.hasVariant || [parent];
+    const variants = this.getArray(parent.hasVariant).length > 0 ? this.getArray(parent.hasVariant) : [parent];
 
     let match = variants.find((v: any) =>
-      Object.entries(selectedAttributes).every(([k, val]) => String(v[k]) === String(val))
+      Object.entries(selectedAttributes).every(([k, val]) => String(this.getFirst(v[k])) === String(val))
     );
 
     if (!match && lastClickedAttr) {
-      match = variants.find((v: any) => String(v[lastClickedAttr]) === String(selectedAttributes[lastClickedAttr]));
+      match = variants.find((v: any) => String(this.getFirst(v[lastClickedAttr])) === String(selectedAttributes[lastClickedAttr]));
     }
 
     return match || variants[0];
@@ -59,49 +70,129 @@ export class SchemaExtractor {
   }
 
   static findMatchingServicePackage(parent: any, packageName: string): any {
-      if (!parent?.hasOfferCatalog?.itemListElement) return null;
+      const catalogs = this.getArray(parent?.hasOfferCatalog);
+      if (catalogs.length === 0) return null;
+
       const normalizedSearch = this.normalizeName(packageName);
 
-      return parent.hasOfferCatalog.itemListElement.find((off: any) => {
-          const item = off.itemOffered || off;
-          const name = item.name || off.name;
-          return this.normalizeName(name) === normalizedSearch;
-      });
+      for (const catalog of catalogs) {
+          const elements = this.getArray(catalog.itemListElement);
+          const found = elements.find((off: any) => {
+              const item = off.itemOffered || off;
+              const name = this.getFirst(item.name) || this.getFirst(off.name);
+              return this.normalizeName(name as string) === normalizedSearch;
+          });
+          if (found) return found;
+      }
+      return null;
   }
 
-  static findAllCatalogs(obj: any, results: any[] = []): any[] {
-      if (!obj || typeof obj !== 'object') return results;
+  static findAllServices(obj: any): any[] {
+      const results: any[] = [];
+      const stack = [obj];
+      const seen = new Set();
 
-      if (obj.hasOfferCatalog) {
-          results.push(obj.hasOfferCatalog);
-      }
+      while (stack.length > 0) {
+          const current = stack.pop();
+          if (!current || typeof current !== 'object' || seen.has(current)) continue;
+          seen.add(current);
 
-      // Recursive search
-      if (Array.isArray(obj)) {
-          obj.forEach(item => this.findAllCatalogs(item, results));
-      } else {
-          Object.values(obj).forEach(val => {
-              if (val && typeof val === 'object') {
-                  this.findAllCatalogs(val, results);
+          // Find via OfferCatalog
+          if (current.hasOfferCatalog) {
+              const catalogs = this.getArray(current.hasOfferCatalog);
+              catalogs.forEach(cat => {
+                  const elements = this.getArray(cat.itemListElement);
+                  results.push(...elements);
+                  stack.push(cat);
+              });
+          }
+
+          // Find via addOn
+          if (current.addOn) {
+              results.push(...this.getArray(current.addOn));
+          }
+
+          // Direct items in an array
+          if (Array.isArray(current)) {
+              stack.push(...current);
+          } else {
+              // Descend into other objects
+              for (const [key, val] of Object.entries(current)) {
+                  if (key !== 'hasOfferCatalog' && key !== 'addOn' && val && typeof val === 'object') {
+                      stack.push(val);
+                  }
               }
-          });
+          }
       }
-
       return results;
   }
 
   static extractPrice(offer: any): { price: string, currency: string } {
-      if (!offer) return { price: "0", currency: "INR" };
+      const off = Array.isArray(offer) ? offer[0] : offer;
+      if (!off) return { price: "0", currency: "INR" };
 
-      const price = offer.price || offer.itemOffered?.offers?.price || offer.offers?.price || "0";
-      const currency = offer.priceCurrency || offer.itemOffered?.offers?.priceCurrency || offer.offers?.priceCurrency || "INR";
+      const price = this.getFirst(off.price) ||
+                    this.getFirst(this.getArray(off.itemOffered)[0]?.offers?.price) ||
+                    this.getFirst(this.getArray(off.offers)[0]?.price) || "0";
+
+      const currency = this.getFirst(off.priceCurrency) ||
+                       this.getFirst(this.getArray(off.itemOffered)[0]?.offers?.priceCurrency) ||
+                       this.getFirst(this.getArray(off.offers)[0]?.priceCurrency) || "INR";
 
       return { price: String(price), currency: String(currency) };
   }
 
   static extractAvailability(offer: any): string {
-      if (!offer) return "https://schema.org/InStock";
-      const av = offer.availability || offer.itemOffered?.offers?.availability || offer.offers?.availability || "https://schema.org/InStock";
-      return String(av);
+      const off = Array.isArray(offer) ? offer[0] : offer;
+      if (!off) return "https://schema.org/InStock";
+
+      const av = this.getFirst(off.availability) ||
+                 this.getFirst(this.getArray(off.itemOffered)[0]?.offers?.availability) ||
+                 this.getFirst(this.getArray(off.offers)[0]?.availability) || "https://schema.org/InStock";
+
+      // If availability is an object with @id, use that, otherwise stringify
+      return (av as any)?.["@id"] || String(av);
+  }
+
+  static extractEligibleQuantity(data: any): { minValue: number | null, maxValue: number | null } {
+      const obj = Array.isArray(data) ? data[0] : data;
+      if (!obj) return { minValue: null, maxValue: null };
+
+      const eq = this.getFirst(obj.eligibleQuantity) ||
+                 this.getFirst(this.getArray(obj.itemOffered)[0]?.offers?.eligibleQuantity) ||
+                 this.getFirst(this.getArray(obj.itemOffered)[0]?.eligibleQuantity) ||
+                 this.getFirst(this.getArray(obj.offers)[0]?.eligibleQuantity) ||
+                 this.getFirst(this.getArray(obj.offers)[0]?.itemOffered?.eligibleQuantity);
+
+      if (!eq) return { minValue: null, maxValue: null };
+
+      const min = this.getFirst(eq.minValue);
+      const max = this.getFirst(eq.maxValue);
+
+      return {
+          minValue: (min !== undefined && min !== null) ? Number(min) : null,
+          maxValue: (max !== undefined && max !== null) ? Number(max) : null
+      };
+  }
+
+  static extractAdvanceBookingRequirement(offer: any): string | null {
+      const off = Array.isArray(offer) ? offer[0] : offer;
+      if (!off) return null;
+
+      const abr = this.getFirst(off.advanceBookingRequirement);
+      if (!abr) return null;
+
+      if (typeof abr === 'string') return abr;
+
+      const val = this.getFirst(abr.value);
+      const unit = this.getFirst(abr.unitCode) || this.getFirst(abr.unitText) || "";
+
+      if (val === undefined) return null;
+
+      let unitLabel = unit;
+      if (unit === 'HUR') unitLabel = 'Hours';
+      else if (unit === 'DAY') unitLabel = 'Days';
+
+      return `${val} ${unitLabel}`.trim();
   }
 }

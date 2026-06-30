@@ -27,6 +27,9 @@ export class UIManager {
     const style = document.createElement('style');
     style.id = 'antinna-modal-styles';
     style.textContent = `
+      @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+      @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+      .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; align-items: flex-end; pointer-events: none; }
       .antinna-geo-backdrop { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 4000; display: none; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
       .antinna-geo-backdrop.active { display: flex; opacity: 1; pointer-events: auto; }
       .antinna-geo-content { background: var(--card); width: 95%; max-width: 500px; padding: 25px; border-radius: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.3); position: relative; max-height: 90vh; overflow-y: auto; color: var(--text); }
@@ -50,6 +53,8 @@ export class UIManager {
       html.dark .antinna-geo-metrics { background: #1e293b; border-color: #059669; }
       .antinna-geo-tag { font-family: monospace; font-size: 0.75rem; background: #e2e8f0; padding: 2px 6px; border-radius: 4px; color: #475569; }
       html.dark .antinna-geo-tag { background: #334155; color: #cbd5e1; }
+      .antinna-geo-input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #ddd; font-size: 0.9rem; outline: none; background: var(--bg); color: var(--text); }
+      html.dark .antinna-geo-input { border-color: #334155; }
 
       .antinna-spinner { display: none; width: 22px; height: 22px; border: 3px solid rgba(0,0,0,0.1); border-radius: 50%; border-top-color: #e67e22; animation: antinna-spin 0.8s linear infinite; box-sizing: border-box; }
       @keyframes antinna-spin {
@@ -57,10 +62,9 @@ export class UIManager {
           to { transform: translate(-50%, -50%) rotate(360deg); }
       }
 
-      .v-btn.loading { pointer-events: none; opacity: 0.8; }
-      .v-btn.loading .antinna-spinner { display: inline-block; margin-right: 8px; border-top-color: #fff; animation-name: v-btn-spin; }
-      @keyframes v-btn-spin { to { transform: rotate(360deg); } }
-      .v-btn.loading .btn-text { display: none; }
+      .v-btn.loading { pointer-events: none; opacity: 0.8; position: relative; }
+      .v-btn.loading .antinna-spinner { display: block !important; position: absolute; left: 50%; top: 50%; border-top-color: #fff; margin: 0; }
+      .v-btn.loading .btn-text { visibility: hidden; }
 
       .loc-btn.loading { pointer-events: none; position: relative; color: transparent !important; font-size: 0 !important; }
       .loc-btn.loading * { visibility: hidden; }
@@ -90,18 +94,45 @@ export class UIManager {
       .antinna-country-flag { font-size: 1.2rem; }
       .antinna-country-name { flex: 1; color: var(--text); }
       .antinna-country-code { color: var(--accent); font-weight: 800; font-size: 0.85rem; }
+      .section-title { font-size: 1.1rem; font-weight: 800; margin: 25px 0 15px 0; padding-bottom: 8px; border-bottom: 2px solid var(--accent); display: inline-block; }
     `;
     document.head.appendChild(style);
   }
 
-  static showToast(message: string, type: 'success' | 'error' = 'success'): void {
-    const e = document.createElement("div");
-    e.style.cssText = "position:fixed;bottom:24px;right:24px;color:white;padding:12px 24px;border-radius:10px;font-weight:600;z-index:3000;transition: opacity 0.3s; background:" + (type === "success" ? "#10b981" : "#ef4444");
-    e.textContent = message;
-    document.body.appendChild(e);
+  static showToast(message: string, type: 'success' | 'error' | 'info' = 'success'): void {
+    this.injectModalStyles();
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.style.cssText = `
+        background: ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#1e293b'};
+        color: white;
+        padding: 12px 24px;
+        border-radius: 10px;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 10px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        pointer-events: auto;
+        border: 1px solid rgba(255,255,255,0.1);
+    `;
+    toast.innerText = message;
+    container.appendChild(toast);
+
     setTimeout(() => {
-      e.style.opacity = "0";
-      setTimeout(() => e.remove(), 300);
+        toast.style.animation = 'fadeOut 0.3s forwards';
+        setTimeout(() => toast.remove(), 300);
     }, 3000);
   }
 }

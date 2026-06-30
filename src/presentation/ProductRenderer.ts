@@ -2,8 +2,11 @@ import { Product, ProductGroup, Service, Offer, Organization } from '../types/sc
 import { AppState } from '../types/app';
 import { UIManager } from './UIManager';
 import { SchemaExtractor } from '../core/SchemaExtractor';
+import { CartManager } from '../core/CartManager';
 
 export class ProductRenderer {
+  constructor(private cartManager: CartManager) {}
+
   render(p: Product | ProductGroup | Service | any, state: AppState, onVariantChange: (attr: string, val: string) => void): void {
     const isBusiness = p["@type"] === "LocalBusiness" || p["@type"] === "Store" || p["@type"] === "Organization";
     const isPrimaryService = p["@type"] === "Service";
@@ -14,27 +17,31 @@ export class ProductRenderer {
         const variant = SchemaExtractor.findMatchingVariant(p, state.selectedVariants, state.lastClickedAttribute);
 
         if (variant && (p as any).variesBy) {
-            (p as any).variesBy.forEach((u: string) => {
-              const a = u.split(/[\/#]/).pop() || '';
-              if (variant[a]) state.selectedVariants[a] = String(variant[a]);
+            SchemaExtractor.getArray((p as any).variesBy).forEach((u: any) => {
+              const uStr = typeof u === 'string' ? u : SchemaExtractor.getFirst(u.url) || SchemaExtractor.getFirst(u.name) || '';
+              const a = uStr.split(/[\/#]/).pop() || '';
+              const variantVal = SchemaExtractor.getFirst(variant[a]);
+              if (variantVal) state.selectedVariants[a] = String(variantVal);
             });
         }
 
-        UIManager.setContent("p-name", variant.name || p.name);
-        UIManager.setContent("p-desc", variant.description || p.description);
-        UIManager.setContent("p-sku", variant.sku ? "SKU: " + variant.sku : "");
+        UIManager.setContent("p-name", SchemaExtractor.getFirst(variant.name) || SchemaExtractor.getFirst(p.name));
+        UIManager.setContent("p-desc", SchemaExtractor.getFirst(variant.description) || SchemaExtractor.getFirst(p.description));
+        UIManager.setContent("p-sku", variant.sku ? "SKU: " + SchemaExtractor.getFirst(variant.sku) : "");
 
-        const brand = typeof (variant.brand || p.brand) === "string"
-          ? (variant.brand || p.brand)
-          : ((variant.brand as Organization)?.name || (p.brand as Organization)?.name);
+        const variantBrand = SchemaExtractor.getFirst(variant.brand || p.brand);
+        const brand = typeof variantBrand === "string"
+          ? variantBrand
+          : SchemaExtractor.getFirst((variantBrand as Organization)?.name);
         UIManager.setContent("p-brand", brand || "");
 
-        const offer = (variant.offers || p.offers) as Offer;
+        const offer = SchemaExtractor.getFirst(variant.offers || p.offers) as Offer;
         const priceEl = UIManager.el("p-price");
         if (priceEl && offer) {
           const { price, currency } = SchemaExtractor.extractPrice(offer);
           priceEl.textContent = `${currency} ${price}`;
-          priceEl.classList.toggle("blurry", offer.availability === "https://schema.org/OutOfStock");
+          const availability = SchemaExtractor.extractAvailability(offer);
+          priceEl.classList.toggle("blurry", availability === "https://schema.org/OutOfStock");
         }
 
         this.renderStockBadge(offer);
@@ -43,21 +50,49 @@ export class ProductRenderer {
         const imgs = Array.isArray(variant.image || p.image) ? (variant.image || p.image) : [variant.image || p.image];
         this.renderCarousel(imgs.filter(Boolean));
 
+        this.renderQuantityConstraints(offer);
         this.renderVariants(p, state, onVariantChange);
         this.renderSpecs(variant, p);
+        this.renderRatings(variant, p);
 
-        // Use class selector since it is a class in XML
         UIManager.toggleClass(".qty-controls", "hidden", isPrimaryService);
         UIManager.toggleClass("#add-to-cart-btn", "hidden", false);
 
-        this.renderOtherServices(offer?.seller || p.seller || (p as Service).provider, p);
+        const seller = SchemaExtractor.getFirst(variant.offers)?.seller ||
+                       SchemaExtractor.getFirst(p.offers)?.seller ||
+                       SchemaExtractor.getFirst(p.seller) ||
+                       (p as Service).provider;
+
+        const addons = this.renderAddOns(variant, seller);
+        this.renderOtherServices(seller, variant, addons);
     }
   }
 
+  private renderAddOns(variant: any, seller: any): any[] {
+      const addonSec = UIManager.el("product-addons");
+      const addonList = UIManager.el("product-addons-list");
+      if (!addonSec || !addonList) return [];
+
+      const addons = SchemaExtractor.getArray(variant.addOn);
+
+      const variantWithUrl = { ...variant, url: window.location.href.split('?')[0].split('#')[0] };
+      const parentKey = CartManager.generateItemKey(variantWithUrl, (window as any).AntinnaEngine.state.selectedVariants);
+      const isParentInCart = this.cartManager.hasItem(parentKey);
+
+      if (addons.length > 0 && isParentInCart) {
+          addonSec.style.display = "block";
+          addonList.innerHTML = this.generateServiceCardsHtml(addons, variant, seller, true);
+          return addons;
+      } else {
+          addonSec.style.display = "none";
+          return [];
+      }
+  }
+
   private renderBusinessView(b: any): void {
-      UIManager.setContent("p-name", b.name);
-      UIManager.setContent("p-desc", b.description || "");
-      UIManager.setContent("p-brand", b["@type"]);
+      UIManager.setContent("p-name", SchemaExtractor.getFirst(b.name));
+      UIManager.setContent("p-desc", SchemaExtractor.getFirst(b.description) || "");
+      UIManager.setContent("p-brand", SchemaExtractor.getFirst(b["@type"]));
 
       const priceEl = UIManager.el("p-price");
       if (priceEl) priceEl.textContent = "Service Provider";
@@ -77,7 +112,7 @@ export class ProductRenderer {
     const st = UIManager.el("stock-badge-container");
     if (st && offer) {
       UIManager.toggleClass("#stock-badge-container", "hidden", false);
-      const av = offer.availability;
+      const av = SchemaExtractor.extractAvailability(offer);
       let label = 'Out of Stock', css = 'out-stock', available = false;
       if (av === 'https://schema.org/InStock' || av === 'https://schema.org/OnlineOnly') {
         label = 'In Stock'; css = 'in-stock'; available = true;
@@ -97,8 +132,9 @@ export class ProductRenderer {
 
   private renderAreaServed(s: Service): void {
     const pDesc = UIManager.el('p-desc');
-    if (s && s.areaServed && pDesc) {
-      const area = typeof s.areaServed === 'string' ? s.areaServed : ((s.areaServed as any).name || (s.areaServed as any)['@type']);
+    const areaServed = SchemaExtractor.getFirst(s.areaServed);
+    if (s && areaServed && pDesc) {
+      const area = typeof areaServed === 'string' ? areaServed : (SchemaExtractor.getFirst((areaServed as any).name) || SchemaExtractor.getFirst((areaServed as any)['@type']));
       const existing = UIManager.el('svc-area-badge');
       if (existing) existing.remove();
       const ab = document.createElement('div');
@@ -110,6 +146,46 @@ export class ProductRenderer {
       ab.innerHTML = `&#127760; <b>Area Served:</b> ${area}`;
       pDesc.before(ab);
     }
+  }
+
+  private renderQuantityConstraints(offer: Offer): void {
+      const { minValue, maxValue } = SchemaExtractor.extractEligibleQuantity(offer);
+      const container = UIManager.query('.qty-controls');
+      if (!container) return;
+
+      const existingHint = UIManager.el('qty-constraints-hint');
+      if (existingHint) existingHint.remove();
+
+      if (minValue !== null || maxValue !== null) {
+          const hint = document.createElement('div');
+          hint.id = 'qty-constraints-hint';
+          hint.style.fontSize = '0.75rem';
+          hint.style.color = '#777';
+          hint.style.marginTop = '8px';
+          hint.style.fontWeight = '600';
+
+          let text = '';
+          if (minValue !== null && maxValue !== null) text = `Min: ${minValue}, Max: ${maxValue}`;
+          else if (minValue !== null) text = `Minimum order: ${minValue}`;
+          else if (maxValue !== null) text = `Maximum order: ${maxValue}`;
+
+          hint.textContent = text;
+          container.after(hint);
+      }
+
+      (window as any).currentQuantityLimits = { minValue, maxValue };
+      this.updateQtyButtons();
+  }
+
+  public updateQtyButtons(): void {
+      const limits = (window as any).currentQuantityLimits;
+      const qtyPlus = UIManager.el<HTMLButtonElement>("qty-plus");
+      const currentQty = parseInt(UIManager.el("qty-val")?.textContent || "1");
+
+      if (qtyPlus && limits?.maxValue !== null) {
+          qtyPlus.disabled = currentQty >= limits.maxValue;
+          qtyPlus.style.opacity = qtyPlus.disabled ? '0.5' : '1';
+      }
   }
 
   private renderCarousel(imgs: any[]): void {
@@ -141,9 +217,11 @@ export class ProductRenderer {
     if (vc && !vc.children.length) {
       if (p.variesBy) {
         UIManager.toggleClass("#p-variants", "hidden", false);
-        p.variesBy.forEach((u: string) => {
-          const a = u.split(/[\/#]/).pop() || '';
-          const vals = [...new Set(p.hasVariant.map((x: any) => x[a]).filter(Boolean))];
+        SchemaExtractor.getArray(p.variesBy).forEach((u: any) => {
+          const uStr = typeof u === 'string' ? u : SchemaExtractor.getFirst(u.url) || SchemaExtractor.getFirst(u.name) || '';
+          const a = uStr.split(/[\/#]/).pop() || '';
+          const variants = SchemaExtractor.getArray(p.hasVariant);
+          const vals = [...new Set(variants.map((x: any) => SchemaExtractor.getFirst(x[a])).filter(Boolean))];
           if (vals.length === 0) return;
           const g = document.createElement("div");
           g.className = "v-group";
@@ -157,10 +235,11 @@ export class ProductRenderer {
             btn.dataset.val = String(vl);
             if (a.toLowerCase() === "color") {
               btn.classList.add("v-color");
-              const vm = p.hasVariant.find((x: any) => String(x[a]) === String(vl));
-              const vi = vm && (Array.isArray(vm.image) ? vm.image[0] : vm.image);
+              const variants = SchemaExtractor.getArray(p.hasVariant);
+              const vm = variants.find((x: any) => String(SchemaExtractor.getFirst(x[a])) === String(vl));
+              const vi = vm && SchemaExtractor.getFirst(vm.image);
               if (vi) {
-                const url = vi.url || vi;
+                const url = (vi as any).url || vi;
                 btn.style.backgroundImage = `url('${url}')`;
               } else {
                 btn.style.backgroundColor = String(vl);
@@ -183,13 +262,18 @@ export class ProductRenderer {
         g.innerHTML = `<span class="v-label">Available Packages</span>`;
         const os = document.createElement("div");
         os.className = "v-options";
-        p.hasOfferCatalog.itemListElement.forEach((off: any) => {
+        const catalog = SchemaExtractor.getFirst(p.hasOfferCatalog);
+        SchemaExtractor.getArray(catalog?.itemListElement).forEach((off: any) => {
           const btn = document.createElement("button");
           btn.className = "v-btn";
-          btn.innerHTML = `${off.itemOffered?.name || off.name}<br/><small>${off.priceCurrency || "INR"} ${off.price}</small>`;
+          const itemName = SchemaExtractor.getFirst(off.itemOffered?.name) || SchemaExtractor.getFirst(off.name);
+          const itemPrice = SchemaExtractor.getFirst(off.price);
+          const itemCurrency = SchemaExtractor.getFirst(off.priceCurrency);
+          btn.innerHTML = `${itemName}<br/><small>${itemCurrency || "INR"} ${itemPrice}</small>`;
           btn.onclick = () => {
             state.selectedPackage = off;
-            UIManager.setContent('p-price', `${off.priceCurrency} ${off.price}`);
+            UIManager.setContent('p-price', `${SchemaExtractor.getFirst(off.priceCurrency)} ${SchemaExtractor.getFirst(off.price)}`);
+            this.renderQuantityConstraints(off);
             document.querySelectorAll('.v-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
           };
@@ -210,15 +294,20 @@ export class ProductRenderer {
   }
 
   private checkAvailability(p: any, state: AppState): void {
-    if (!p || !p.hasVariant) return;
+    const variants = SchemaExtractor.getArray(p.hasVariant);
+    if (!p || variants.length === 0) return;
     document.querySelectorAll<HTMLButtonElement>('.v-btn[data-attr]').forEach(btn => {
       const a = btn.dataset.attr || '';
       const v = btn.dataset.val || '';
       const test = { ...state.selectedVariants, [a]: v };
-      const match = p.hasVariant.find((x: any) =>
-        Object.entries(test).every(([k, val]) => !x[k] || String(x[k]) === String(val))
+      const match = variants.find((x: any) =>
+        Object.entries(test).every(([k, val]) => {
+            const fieldVal = SchemaExtractor.getFirst(x[k]);
+            return !fieldVal || String(fieldVal) === String(val);
+        })
       );
-      const out = match && match.offers && match.offers.availability === 'https://schema.org/OutOfStock';
+      const availability = match ? SchemaExtractor.extractAvailability(match.offers) : null;
+      const out = availability === 'https://schema.org/OutOfStock';
       btn.style.opacity = !match ? '0.3' : (out ? '0.6' : '1');
       btn.style.borderStyle = !match ? 'dashed' : 'solid';
     });
@@ -228,16 +317,42 @@ export class ProductRenderer {
     const sp = UIManager.el("p-specs");
     const sl = UIManager.el("specs-list");
     if (sp && sl) {
-      const flds: any = {
-        'Model': variant.model || p.model,
-        'Material': variant.material || p.material,
-        'GTIN': variant.gtin13 || variant.gtin8 || '',
-        'Weight': (variant.weight || p.weight)?.value || (variant.weight || p.weight)
+      const getVal = (v: any) => {
+          if (!v) return null;
+          if (typeof v === 'string') return v;
+          if (typeof v === 'number') return String(v);
+          return SchemaExtractor.getFirst(v.name) || SchemaExtractor.getFirst(v.value) || SchemaExtractor.getFirst(v.text) || null;
       };
+
+      const flds: Record<string, any> = {
+        'Category': getVal(variant.category || p.category),
+        'Condition': (variant.itemCondition || p.itemCondition)?.split('/').pop()?.replace('Condition', '') || '',
+        'Origin': getVal(variant.countryOfOrigin || p.countryOfOrigin),
+        'SKU': getVal(variant.sku || p.sku),
+        'MPN': getVal(variant.mpn || p.mpn),
+        'Model': getVal(variant.model || p.model),
+        'Brand': getVal(variant.brand || p.brand),
+        'Manufacturer': getVal(variant.manufacturer || p.manufacturer),
+        'Material': getVal(variant.material || p.material),
+        'GTIN': variant.gtin13 || variant.gtin8 || variant.gtin14 || variant.gtin || '',
+        'Weight': (variant.weight || p.weight)?.value || (variant.weight || p.weight),
+        'Keywords': SchemaExtractor.getArray(variant.keywords || p.keywords).map(k => getVal(k)).filter(Boolean).join(', ')
+      };
+
       let h = '';
       for (let [l, k] of Object.entries(flds)) {
         if (k) h += `<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(0,0,0,0.05);"><span style="opacity:0.6;">${l}</span><span style="font-weight:700;">${k}</span></div>`;
       }
+
+      const addProps = SchemaExtractor.getArray(p.additionalProperty).concat(SchemaExtractor.getArray(variant.additionalProperty));
+      addProps.forEach(prop => {
+          const name = SchemaExtractor.getFirst(prop.name);
+          const val = SchemaExtractor.getFirst(prop.value);
+          if (name && val) {
+              h += `<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(0,0,0,0.05);"><span style="opacity:0.6;">${name}</span><span style="font-weight:700;">${val}</span></div>`;
+          }
+      });
+
       if (h) {
         sp.style.display = "block";
         sl.innerHTML = h;
@@ -245,6 +360,63 @@ export class ProductRenderer {
         sp.style.display = "none";
       }
     }
+  }
+
+  private renderRatings(variant: any, p: any): void {
+      const ar = SchemaExtractor.getFirst(variant.aggregateRating || p.aggregateRating);
+      const reviews = SchemaExtractor.getArray(variant.review || p.review || variant.reviews || p.reviews);
+
+      let container = UIManager.el("product-reviews");
+      if (!container) {
+          container = document.createElement('div');
+          container.id = "product-reviews";
+          UIManager.el("details-section")?.appendChild(container);
+      }
+
+      if (!ar && reviews.length === 0) {
+          container.style.display = "none";
+          return;
+      }
+      container.style.display = "block";
+
+      let h = `<h3 class="section-title">Ratings & Reviews</h3>`;
+
+      if (ar) {
+          const val = Number(SchemaExtractor.getFirst(ar.ratingValue) || 0);
+          const count = SchemaExtractor.getFirst(ar.reviewCount) || SchemaExtractor.getFirst(ar.ratingCount) || 0;
+          h += `
+            <div style="display:flex; align-items:center; gap:15px; margin-bottom:20px; background:var(--bg); padding:20px; border-radius:15px;">
+                <div style="font-size:3rem; font-weight:900; color:var(--accent); line-height:1;">${val.toFixed(1)}</div>
+                <div>
+                    <div style="color:#f1c40f; font-size:1.2rem;">${"★".repeat(Math.round(val))}${"☆".repeat(5-Math.round(val))}</div>
+                    <div style="font-size:0.85rem; opacity:0.6; font-weight:700;">Based on ${count} reviews</div>
+                </div>
+            </div>
+          `;
+      }
+
+      if (reviews.length > 0) {
+          h += `<div style="display:flex; flex-direction:column; gap:15px;">`;
+          reviews.slice(0, 5).forEach(rev => {
+              const rVal = Number(SchemaExtractor.getFirst(rev.reviewRating?.ratingValue) || 5);
+              const author = SchemaExtractor.getFirst(rev.author?.name) || SchemaExtractor.getFirst(rev.author) || "Anonymous";
+              const body = SchemaExtractor.getFirst(rev.reviewBody) || "";
+              const date = SchemaExtractor.getFirst(rev.datePublished) || "";
+              h += `
+                <div style="border-bottom:1px solid rgba(0,0,0,0.05); padding-bottom:15px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                        <span style="font-weight:800; font-size:0.9rem;">${author}</span>
+                        <span style="color:#f1c40f;">${"★".repeat(rVal)}</span>
+                    </div>
+                    <div style="font-size:0.85rem; opacity:0.8; line-height:1.5;">${body}</div>
+                    ${date ? `<div style="font-size:0.7rem; opacity:0.4; margin-top:5px; font-weight:700;">${new Date(date).toLocaleDateString()}</div>` : ''}
+                </div>
+              `;
+          });
+          h += `</div>`;
+      }
+
+      container.innerHTML = h;
   }
 
   renderSeller(s: Organization | any): void {
@@ -257,50 +429,108 @@ export class ProductRenderer {
       return;
     }
     box.style.display = "block";
-    inf.innerHTML = `<strong>${s.name || "Antinna"}</strong><br/>${s.telephone ? `&#128222; ${s.telephone}<br/>` : ""}${s.email ? `&#128231; <a href="mailto:${s.email}">${s.email}</a><br/>` : ""}${s.address ? `📍 ${s.address.streetAddress || ""}, ${s.address.addressLocality || ""}` : ""}`;
+    const address = SchemaExtractor.getFirst(s.address);
+    inf.innerHTML = `<strong>${SchemaExtractor.getFirst(s.name) || "Antinna"}</strong><br/>${SchemaExtractor.getFirst(s.telephone) ? `&#128222; ${SchemaExtractor.getFirst(s.telephone)}<br/>` : ""}${SchemaExtractor.getFirst(s.email) ? `&#128231; <a href="mailto:${SchemaExtractor.getFirst(s.email)}">${SchemaExtractor.getFirst(s.email)}</a><br/>` : ""}${address ? `📍 ${SchemaExtractor.getFirst(address.streetAddress) || ""}, ${SchemaExtractor.getFirst(address.addressLocality) || ""}` : ""}`;
     if (maps) {
-      if (s.hasMap || s.geo) {
+      const geo = SchemaExtractor.getFirst(s.geo);
+      if (SchemaExtractor.getFirst(s.hasMap) || geo) {
         maps.style.display = "inline-flex";
-        maps.href = s.hasMap || `https://www.google.com/maps/search/?api=1&query=${s.geo.latitude},${s.geo.longitude}`;
+        maps.href = SchemaExtractor.getFirst(s.hasMap) || `https://www.google.com/maps/search/?api=1&query=${geo.latitude},${geo.longitude}`;
       } else {
         maps.style.display = "none";
       }
     }
   }
 
-  private renderOtherServices(s: Organization | any, p: any): void {
+  private renderOtherServices(s: Organization | any, p: any, excludeItems: any[] = []): void {
     const otherSec = UIManager.el("other-services");
     const otherList = UIManager.el("other-services-list");
     const titleEl = otherSec?.querySelector('.section-title');
     if (!otherSec || !otherList) return;
 
-    const allCatalogs = SchemaExtractor.findAllCatalogs(s);
-    let svcs: any[] = [];
-    allCatalogs.forEach(cat => {
-        if (cat.itemListElement) svcs.push(...cat.itemListElement);
+    if (!s) return;
+
+    let svcs = SchemaExtractor.findAllServices(s);
+    if (p !== s) {
+        const pSvcs = SchemaExtractor.findAllServices(p);
+        pSvcs.forEach(ps => {
+            if (!svcs.find(s => (s.itemOffered?.name || s.name) === (ps.itemOffered?.name || ps.name))) {
+                svcs.push(ps);
+            }
+        });
+    }
+
+    const excludeNames = excludeItems.map(item => SchemaExtractor.getFirst((item.itemOffered || item).name));
+    svcs = svcs.filter(svc => {
+        const name = SchemaExtractor.getFirst((svc.itemOffered || svc).name);
+        return !excludeNames.includes(name);
     });
 
     if (svcs.length > 0) {
       otherSec.style.display = "block";
-
       if (titleEl) {
           const isBusiness = p["@type"] === "LocalBusiness" || p["@type"] === "Store" || p["@type"] === "Organization";
           titleEl.textContent = isBusiness ? "Deals In / Our Services" : "Optional Product-Related Services";
       }
-
-      otherList.innerHTML = svcs.map((ser: any) => {
-        const item = ser.itemOffered || ser;
-        const n = item.name || ser.name;
-        const { price, currency } = SchemaExtractor.extractPrice(ser);
-        const url = p.url || window.location.href.split('?')[0].split('#')[0];
-        const itemWithUrl = { ...item, url, offers: { "@type": "Offer", price, priceCurrency: currency, availability: SchemaExtractor.extractAvailability(ser) } };
-
-        let btnH = `<button class="v-btn" style="width:100%;padding:10px;font-size:0.85rem;" onclick="CartManager.addItem(${JSON.stringify(itemWithUrl).replace(/"/g, '&quot;')}, ${JSON.stringify(s).replace(/"/g, '&quot;')}); CartRenderer.updateUI();">Add Service</button>`;
-
-        return `<div class="h-card"><div style="font-weight:700;margin-bottom:10px;height:3em;overflow:hidden;">${n}</div><div class="price" style="font-size:1.2rem;margin-bottom:15px;">${price !== "0" ? currency + ' ' + price : 'Free/Included'}</div>${btnH}</div>`;
-      }).join('');
+      otherList.innerHTML = this.generateServiceCardsHtml(svcs, p, s, false);
     } else {
       otherSec.style.display = "none";
     }
+  }
+
+  private generateServiceCardsHtml(items: any[], p: any, s: any, isAddon: boolean): string {
+      return items.map((ser: any) => {
+        const rawItem = SchemaExtractor.getFirst(ser.itemOffered) || ser;
+        const n = SchemaExtractor.getFirst(rawItem.name) || SchemaExtractor.getFirst(ser.name);
+        const { price, currency } = SchemaExtractor.extractPrice(ser);
+        const url = SchemaExtractor.getFirst(p.url) || window.location.href.split('?')[0].split('#')[0];
+        const { minValue, maxValue } = SchemaExtractor.extractEligibleQuantity(ser);
+        const bookingReq = SchemaExtractor.extractAdvanceBookingRequirement(ser);
+
+        const itemWithUrl = {
+            ...rawItem,
+            name: n,
+            "@type": rawItem["@type"] || ser["@type"] || "Service",
+            url,
+            offers: {
+                "@type": "Offer",
+                price,
+                priceCurrency: currency,
+                availability: SchemaExtractor.extractAvailability(ser),
+                eligibleQuantity: {
+                    "@type": "QuantitativeValue",
+                    minValue,
+                    maxValue
+                }
+            }
+        };
+
+        let constraintText = '';
+        if (minValue !== null || maxValue !== null) {
+            if (minValue !== null && maxValue !== null) constraintText = `<div style="font-size:0.7rem; color:#777; margin-bottom:4px;">Min: ${minValue}, Max: ${maxValue}</div>`;
+            else if (minValue !== null) constraintText = `<div style="font-size:0.7rem; color:#777; margin-bottom:4px;">Min: ${minValue}</div>`;
+            else if (maxValue !== null) constraintText = `<div style="font-size:0.7rem; color:#777; margin-bottom:4px;">Max: ${maxValue}</div>`;
+        }
+
+        const bookingText = bookingReq ? `<div style="font-size:0.7rem; color:var(--accent); font-weight:700; margin-bottom:8px;">Booking: ${bookingReq}</div>` : '';
+
+        const itemJson = ((JSON.stringify(itemWithUrl) || 'null').replace)(/"/g, '&quot;');
+        const sellerJson = ((JSON.stringify(s) || 'null').replace)(/"/g, '&quot;');
+
+        let parentKeyParam = 'undefined';
+        if (isAddon) {
+            const engine = (window as any).AntinnaEngine;
+            const variant = SchemaExtractor.findMatchingVariant(engine.state.product, engine.state.selectedVariants, engine.state.lastClickedAttribute);
+            const variantWithUrl = { ...variant, url: window.location.href.split('?')[0].split('#')[0] };
+            const parentKey = CartManager.generateItemKey(variantWithUrl, engine.state.selectedVariants);
+            parentKeyParam = `'${parentKey}'`;
+        }
+
+        const btnLabel = isAddon ? 'Add Add-on' : 'Add Service';
+        const successMsg = isAddon ? 'Add-on Added' : 'Service Added';
+        let btnH = `<button class="v-btn" style="width:100%;padding:10px;font-size:0.85rem;" onclick="addItem(${itemJson}, ${sellerJson}, undefined, 1, ${parentKeyParam}); showToast('${successMsg}', 'success');">${btnLabel}</button>`;
+
+        return `<div class="h-card"><div style="font-weight:700;margin-bottom:10px;height:3em;overflow:hidden;">${n}</div><div class="price" style="font-size:1.2rem;margin-bottom:15px;">${price !== "0" ? currency + ' ' + price : 'Free/Included'}</div>${constraintText}${bookingText}${btnH}</div>`;
+      }).join('');
   }
 }

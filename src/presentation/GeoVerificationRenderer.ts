@@ -7,12 +7,10 @@ export class GeoVerificationRenderer {
   private targetMarker: any;
   private debounceTimer: any;
   private appsScriptService = AppsScriptService.getInstance();
-  private locationManager: LocationManager;
   private currentDeviceLat: number = 28.6139; // Default (Delhi)
   private currentDeviceLng: number = 77.2090;
 
   constructor(locationManager: LocationManager) {
-    this.locationManager = locationManager;
     const loc = locationManager.getData();
     if (loc.lat) this.currentDeviceLat = loc.lat;
     if (loc.lon) this.currentDeviceLng = loc.lon;
@@ -56,7 +54,33 @@ export class GeoVerificationRenderer {
             </div>
           </div>
 
-          <button id="antinna-geo-finalize-btn" class="v-btn active" style="width:100%; margin-top:20px; display:none;">Finalize Order</button>
+          <div id="antinna-geo-address-form" style="display:none; margin-top:15px; border-top: 1px solid #eee; padding-top:15px;">
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                  <div class="v-group">
+                      <span class="v-label">Flat/Plot/Building</span>
+                      <input id="geo-extendedAddress" class="antinna-geo-input" placeholder="e.g. 3rd Floor, Plot 42"/>
+                  </div>
+                  <div class="v-group">
+                      <span class="v-label">Street/Sector</span>
+                      <input id="geo-streetAddress" class="antinna-geo-input" placeholder="e.g. Sector 14"/>
+                  </div>
+              </div>
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px;">
+                  <div class="v-group">
+                      <span class="v-label">City</span>
+                      <input id="geo-locality" class="antinna-geo-input" readonly style="background:#f8f9fa;"/>
+                  </div>
+                  <div class="v-group">
+                      <span class="v-label">Postal Code</span>
+                      <input id="geo-postalCode" class="antinna-geo-input" placeholder="6-digit PIN"/>
+                  </div>
+              </div>
+          </div>
+
+          <button id="antinna-geo-finalize-btn" class="v-btn active" style="width:100%; margin-top:20px; display:none; align-items:center; justify-content:center; gap:10px;">
+            <span class="antinna-spinner"></span>
+            <span class="btn-text">Finalize Order</span>
+          </button>
         </div>
       `;
       document.body.appendChild(modal);
@@ -74,6 +98,12 @@ export class GeoVerificationRenderer {
       input.oninput = (e) => this.handleTypeAhead((e.target as HTMLInputElement).value);
     }
 
+    const formInputs = ['geo-extendedAddress', 'geo-streetAddress', 'geo-postalCode'];
+    formInputs.forEach(id => {
+        const el = UIManager.el(id);
+        if (el) el.oninput = () => this.validateAddressForm();
+    });
+
     document.addEventListener('click', (e) => {
       const dropdown = UIManager.el('antinna-geo-dropdown');
       if (dropdown && e.target !== input) {
@@ -83,10 +113,73 @@ export class GeoVerificationRenderer {
 
     const finalizeBtn = UIManager.el('antinna-geo-finalize-btn');
     if (finalizeBtn) {
-      finalizeBtn.onclick = () => {
-        (window as any).AntinnaEngine.showOrderSummary();
+      finalizeBtn.onclick = async () => {
+        try {
+            this.setFinalizeLoading(true);
+            // Simulate a small delay for API feel
+            await new Promise(r => setTimeout(r, 800));
+
+            const deliveryData = this.collectDeliveryData();
+
+            (window as any).AntinnaEngine.setOrderDelivery(deliveryData);
+
+            this.setFinalizeLoading(false);
+            (window as any).AntinnaEngine.showOrderSummary();
+        } catch (e) {
+            console.error("Error in finalizeBtn.onclick:", e);
+        }
       };
     }
+  }
+
+  private setFinalizeLoading(loading: boolean): void {
+      const btn = UIManager.el('antinna-geo-finalize-btn');
+      if (btn) btn.classList.toggle('loading', loading);
+  }
+
+  private validateAddressForm(): void {
+      const extended = UIManager.el<HTMLInputElement>('geo-extendedAddress')?.value.trim();
+      const street = UIManager.el<HTMLInputElement>('geo-streetAddress')?.value.trim();
+      const pin = UIManager.el<HTMLInputElement>('geo-postalCode')?.value.trim();
+
+      const finalizeBtn = UIManager.el('antinna-geo-finalize-btn');
+      if (finalizeBtn) {
+          const isValid = !!(extended && street && pin && pin.length >= 6);
+          finalizeBtn.style.display = isValid ? 'flex' : 'none';
+      }
+  }
+
+  private collectDeliveryData(): any {
+      const pos = this.targetMarker?.getPosition();
+      const lat = pos ? pos.lat() : ((window as any).lastGeoResponse?.lat || 0);
+      const lng = pos ? pos.lng() : ((window as any).lastGeoResponse?.lng || 0);
+
+      return {
+          "@type": "ParcelDelivery",
+          "deliveryName": "Standard Handheld Delivery",
+          "deliveryAddress": {
+              "@type": "PostalAddress",
+              "extendedAddress": UIManager.el<HTMLInputElement>('geo-extendedAddress')?.value,
+              "streetAddress": UIManager.el<HTMLInputElement>('geo-streetAddress')?.value,
+              "addressLocality": UIManager.el<HTMLInputElement>('geo-locality')?.value,
+              "addressRegion": (window as any).lastGeoResponse?.addressDetails?.addressRegion || "HR",
+              "postalCode": UIManager.el<HTMLInputElement>('geo-postalCode')?.value,
+              "addressCountry": "IN"
+          },
+          "deliveryStatus": {
+              "@type": "DeliveryEvent",
+              "name": "Final Destination Drop-off",
+              "location": {
+                  "@type": "Place",
+                  "name": "Exact Delivery Coordinates",
+                  "geo": {
+                      "@type": "GeoCoordinates",
+                      "latitude": String(lat),
+                      "longitude": String(lng)
+                  }
+              }
+          }
+      };
   }
 
   private initMap(): void {
@@ -211,6 +304,7 @@ export class GeoVerificationRenderer {
 
   private updateTelemetryUI(response: any): void {
     if (response.status === "success") {
+      (window as any).lastGeoResponse = response;
       UIManager.setContent('antinna-geo-status', "Location verified.");
       UIManager.setContent('antinna-geo-clean-address', response.address);
       UIManager.setContent('antinna-geo-dist', response.distance);
@@ -220,8 +314,19 @@ export class GeoVerificationRenderer {
 
       UIManager.toggleClass("#antinna-geo-metrics", "hidden", false);
       UIManager.el("antinna-geo-metrics")!.style.display = "block";
-      UIManager.toggleClass("#antinna-geo-finalize-btn", "hidden", false);
-      UIManager.el("antinna-geo-finalize-btn")!.style.display = "block";
+
+      const form = UIManager.el("antinna-geo-address-form");
+      if (form) {
+          form.style.display = "block";
+          if (response.addressDetails) {
+              const d = response.addressDetails;
+              UIManager.el<HTMLInputElement>('geo-extendedAddress')!.value = d.extendedAddress || "";
+              UIManager.el<HTMLInputElement>('geo-streetAddress')!.value = d.streetAddress || "";
+              UIManager.el<HTMLInputElement>('geo-locality')!.value = d.addressLocality || "";
+              UIManager.el<HTMLInputElement>('geo-postalCode')!.value = d.postalCode || "";
+          }
+          this.validateAddressForm();
+      }
 
       // Save verified location to state
       (window as any).AntinnaEngine.setVerifiedLocation(response);

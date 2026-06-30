@@ -1,8 +1,8 @@
-import { Order, OrderItem, Product, Service, Organization, Offer } from '../types/schema';
+import { Order, Product, Service, Organization } from '../types/schema';
 import { SchemaExtractor } from './SchemaExtractor';
 
 export class CartManager {
-  private order: Order;
+  private order: Order & { totalPrice?: number; priceCurrency?: string };
   private storageKey = "antinna_cart_order";
 
   constructor() {
@@ -11,7 +11,7 @@ export class CartManager {
       orderedItem: [],
       totalPrice: 0,
       priceCurrency: "INR",
-    };
+    } as any;
     this.deduplicate();
   }
 
@@ -33,11 +33,12 @@ export class CartManager {
   private deduplicate(): void {
       const uniqueItems: Record<string, any> = {};
       const newOrderedItems: any[] = [];
+      const orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
 
-      this.order.orderedItem.forEach((item: any) => {
+      orderedItems.forEach((item: any) => {
           const key = item.itemKey || this.generateItemKey(item.orderedItem, item._selectedVariants);
           if (uniqueItems[key]) {
-              uniqueItems[key].orderQuantity += item.orderQuantity;
+              uniqueItems[key].orderQuantity = Number(uniqueItems[key].orderQuantity || 0) + Number(item.orderQuantity || 0);
           } else {
               item.itemKey = key;
               uniqueItems[key] = item;
@@ -50,75 +51,98 @@ export class CartManager {
   }
 
   private calculateTotal(): void {
-    this.order.totalPrice = this.order.orderedItem.reduce((sum, item) => {
+    const orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
+    this.order.totalPrice = orderedItems.reduce((sum: number, item: any) => {
       if (!this.isItemOrderable(item)) return sum;
       const { price } = SchemaExtractor.extractPrice(item.orderedItem.offers);
-      return sum + (parseFloat(price) * item.orderQuantity);
+      return sum + (parseFloat(price) * Number(item.orderQuantity || 1));
     }, 0);
   }
 
   public isItemOrderable(item: any): boolean {
       if (item.isUnavailable) return false;
-      const av = SchemaExtractor.extractAvailability(item.orderedItem.offers);
-      return av !== "https://schema.org/OutOfStock" && av !== "https://schema.org/SoldOut";
+      const av = SchemaExtractor.extractAvailability(item.orderedItem?.offers);
+      if (av === "https://schema.org/OutOfStock" || av === "https://schema.org/SoldOut") return false;
+      return true;
   }
 
-  addItem(item: Product | Service, seller?: Organization, selectedVariants?: Record<string, string>): void {
-    const availability = SchemaExtractor.extractAvailability(item.offers);
-    if (availability === "https://schema.org/OutOfStock") {
-        // Prevent adding if out of stock
-        return;
-    }
+  public isItemQuantityValid(item: any): boolean {
+      const min = item._constraints?.minValue;
+      if (min !== null && min !== undefined && Number(item.orderQuantity || 1) < min) return false;
+      return true;
+  }
 
-    if (!item.url) {
+  public isCartValid(): boolean {
+      const items = SchemaExtractor.getArray(this.order.orderedItem);
+      if (items.length === 0) return false;
+      return items.every(item => this.isItemOrderable(item) && this.isItemQuantityValid(item));
+  }
+
+  addItem(item: Product | Service, seller?: Organization, selectedVariants?: Record<string, string>, quantity: number = 1, parentItemKey?: string): void {
+    const availability = SchemaExtractor.extractAvailability(item.offers);
+    if (availability === "https://schema.org/OutOfStock") return;
+
+    if (!SchemaExtractor.getFirst(item.url)) {
         item.url = window.location.href.split('?')[0].split('#')[0];
     }
 
     const itemKey = this.generateItemKey(item, selectedVariants);
+    let orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
 
-    const existing = this.order.orderedItem.find(
-      (oi) => (oi as any).itemKey === itemKey
-    );
+    if (parentItemKey) {
+        const parentExists = orderedItems.some((oi: any) => oi.itemKey === parentItemKey);
+        if (!parentExists) {
+            const UIManager = (window as any).UIManager;
+            if (UIManager) UIManager.showToast("Please add the main product first", "error");
+            return;
+        }
+    }
+
+    const { minValue, maxValue } = SchemaExtractor.extractEligibleQuantity(item); const qtyToAdd = Number(quantity); const existing = orderedItems.find((oi: any) => oi.itemKey === itemKey);
 
     if (existing) {
-      existing.orderQuantity++;
+      const currentQty = Number(existing.orderQuantity || 0);
+      const newQty = currentQty + qtyToAdd;
+
+      if (maxValue !== null && newQty > maxValue) {
+          const UIManager = (window as any).UIManager;
+          if (UIManager) UIManager.showToast(`Maximum limit of ${maxValue} reached for this item`, "error");
+          existing.orderQuantity = maxValue;
+      } else {
+          existing.orderQuantity = newQty;
+      }
     } else {
-      const specs: any = {};
-      const fields = [
-        'material', 'color', 'size', 'gtin13', 'sku',
-        'weight', 'height', 'width', 'depth', 'description'
-      ];
-
-      fields.forEach(field => {
-        if ((item as any)[field]) specs[field] = (item as any)[field];
-      });
-
       const itemCopy = JSON.parse(JSON.stringify(item));
+      const initialQty = Math.max(qtyToAdd, minValue || 1);
+      const finalInitialQty = maxValue !== null ? Math.min(initialQty, maxValue) : initialQty;
 
-      this.order.orderedItem.push({
+      orderedItems.push({
         "@type": "OrderItem",
         orderedItem: {
           ...itemCopy,
           url: item.url,
           _selectedVariants: selectedVariants ? { ...selectedVariants } : undefined
         },
-        orderQuantity: 1,
+        orderQuantity: finalInitialQty,
         seller: seller ? JSON.parse(JSON.stringify(seller)) : undefined,
-        itemKey: itemKey
+        itemKey: itemKey,
+        parentItemKey: parentItemKey,
+        _constraints: { minValue, maxValue }
       } as any);
+      this.order.orderedItem = orderedItems;
     }
     this.saveToStorage();
   }
 
-  private generateItemKey(item: Product | Service | any, variants?: Record<string, string>): string {
-    let url = item.url || '';
+  public static generateItemKey(item: Product | Service | any, variants?: Record<string, string>): string {
+    let url = SchemaExtractor.getFirst(item.url) || '';
     if (url.includes('?')) url = url.split('?')[0];
     if (url.includes('#')) url = url.split('#')[0];
     url = url.toLowerCase().replace(/\/$/, "");
 
-    const type = item["@type"] || "Product";
-    const name = item.name || '';
-    const sku = item.sku || '';
+    const type = SchemaExtractor.getFirst(item["@type"]) || "Product";
+    const name = SchemaExtractor.getFirst(item.name) || '';
+    const sku = SchemaExtractor.getFirst(item.sku) || '';
 
     let variantString = '';
     if (variants) {
@@ -129,17 +153,42 @@ export class CartManager {
     return `${url}::${type}::${sku}::${name}::${variantString}`;
   }
 
+  public generateItemKey(item: Product | Service | any, variants?: Record<string, string>): string {
+    return CartManager.generateItemKey(item, variants);
+  }
+
   removeItem(index: number): void {
-    const item = this.order.orderedItem[index];
-    if (!item) return;
-    this.order.orderedItem.splice(index, 1);
+    let orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
+    if (index < 0 || index >= orderedItems.length) return;
+
+    const removedItem = orderedItems[index] as any;
+    const removedItemKey = removedItem.itemKey;
+
+    // Remove the item itself
+    orderedItems.splice(index, 1);
+
+    // Cascading removal for add-ons that depend on this item
+    orderedItems = orderedItems.filter((item: any) => item.parentItemKey !== removedItemKey);
+
+    this.order.orderedItem = orderedItems;
     this.saveToStorage();
   }
 
   updateQty(index: number, delta: number): void {
-    const item = this.order.orderedItem[index];
+    const orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
+    const item = orderedItems[index] as any;
     if (!item) return;
-    item.orderQuantity += delta;
+
+    const newQty = Number(item.orderQuantity || 0) + delta;
+    const max = item._constraints?.maxValue;
+
+    if (delta > 0 && max !== null && max !== undefined && newQty > max) {
+        const UIManager = (window as any).UIManager;
+        if (UIManager) UIManager.showToast(`Maximum limit of ${max} reached`, "error");
+        return;
+    }
+
+    item.orderQuantity = newQty;
     if (item.orderQuantity <= 0) {
       this.removeItem(index);
     } else {
@@ -148,7 +197,8 @@ export class CartManager {
   }
 
   updateItemDetails(index: number, freshBaseData: any | null): void {
-    const item = this.order.orderedItem[index] as any;
+    const orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
+    const item = orderedItems[index] as any;
     if (!item) return;
 
     if (!freshBaseData) {
@@ -157,20 +207,15 @@ export class CartManager {
       let freshMatch = null;
       const cartItem = item.orderedItem;
       const dataSources = Array.isArray(freshBaseData) ? freshBaseData : [freshBaseData];
+      const normalizedCartName = SchemaExtractor.normalizeName(cartItem.name);
 
       for (const source of dataSources) {
-          const allCatalogs = SchemaExtractor.findAllCatalogs(source);
-          for (const catalog of allCatalogs) {
-              const matchedPackage = SchemaExtractor.findMatchingServicePackage({ hasOfferCatalog: catalog }, cartItem.name);
-              if (matchedPackage) {
-                  const { price, currency } = SchemaExtractor.extractPrice(matchedPackage);
-                  const availability = SchemaExtractor.extractAvailability(matchedPackage);
-                  freshMatch = {
-                      ...cartItem,
-                      ...(matchedPackage.itemOffered || matchedPackage),
-                      "@type": (matchedPackage.itemOffered?.["@type"] || matchedPackage["@type"] || cartItem["@type"]),
-                      offers: { "@type": "Offer", price, priceCurrency: currency, availability }
-                  };
+          const allServices = SchemaExtractor.findAllServices(source);
+          for (const serviceOffer of allServices) {
+              const sItem = serviceOffer.itemOffered || serviceOffer;
+              const name = SchemaExtractor.getFirst(sItem.name) || SchemaExtractor.getFirst(serviceOffer.name);
+              if (SchemaExtractor.normalizeName(name as string) === normalizedCartName) {
+                  freshMatch = serviceOffer;
                   break;
               }
           }
@@ -184,9 +229,9 @@ export class CartManager {
               }
           }
 
-          const sourceId = source.sku || source.identifier || source.name;
-          const cartId = cartItem.sku || cartItem.identifier || cartItem.name;
-          if (source["@type"] === cartItem["@type"] && sourceId === cartId) {
+          const sourceId = SchemaExtractor.getFirst(source.sku) || SchemaExtractor.getFirst(source.identifier) || SchemaExtractor.getFirst(source.name);
+          const cartId = SchemaExtractor.getFirst(cartItem.sku) || SchemaExtractor.getFirst(cartItem.identifier) || SchemaExtractor.getFirst(cartItem.name);
+          if (SchemaExtractor.getFirst(source["@type"]) === SchemaExtractor.getFirst(cartItem["@type"]) && sourceId === cartId) {
               freshMatch = source;
               break;
           }
@@ -194,18 +239,27 @@ export class CartManager {
 
       if (freshMatch) {
           item.isUnavailable = false;
-          const { price, currency } = SchemaExtractor.extractPrice(freshMatch.offers || freshMatch);
-          const availability = SchemaExtractor.extractAvailability(freshMatch.offers || freshMatch);
+          const { price, currency } = SchemaExtractor.extractPrice(freshMatch);
+          const availability = SchemaExtractor.extractAvailability(freshMatch);
+          const { minValue, maxValue } = SchemaExtractor.extractEligibleQuantity(freshMatch);
 
+          item._constraints = { minValue, maxValue };
           item.orderedItem.offers = {
               "@type": "Offer",
               price: price,
               priceCurrency: currency,
-              availability: availability
+              availability: availability,
+              eligibleQuantity: (minValue !== null || maxValue !== null) ? {
+                  "@type": "QuantitativeValue",
+                  minValue,
+                  maxValue
+              } : undefined
           };
-          item.orderedItem.image = freshMatch.image || item.orderedItem.image;
-          item.orderedItem.name = freshMatch.name || item.orderedItem.name;
-          item.orderedItem.description = freshMatch.description || item.orderedItem.description;
+
+          const matchedItem = freshMatch.itemOffered || freshMatch;
+          item.orderedItem.image = matchedItem.image || item.orderedItem.image;
+          item.orderedItem.name = matchedItem.name || item.orderedItem.name;
+          item.orderedItem.description = matchedItem.description || item.orderedItem.description;
       } else {
           item.isUnavailable = true;
       }
@@ -218,11 +272,16 @@ export class CartManager {
   }
 
   getTotalQuantity(): number {
-    return this.order.orderedItem.reduce((sum, item) => sum + item.orderQuantity, 0);
+    const orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
+    return orderedItems.reduce((sum: number, item: any) => sum + Number(item.orderQuantity || 0), 0);
   }
 
   clear(): void {
     this.order.orderedItem = [];
     this.saveToStorage();
+  }
+
+  public hasItem(itemKey: string): boolean {
+      return SchemaExtractor.getArray(this.order.orderedItem).some((oi: any) => oi.itemKey === itemKey);
   }
 }

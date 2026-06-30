@@ -1,4 +1,5 @@
-import { Order, Offer } from '../types/schema';
+import { Order } from '../types/schema';
+import { SchemaExtractor } from '../core/SchemaExtractor';
 
 export class GooglePayService {
   private merchantId = "BCR2DN5TVPLKL4KZ";
@@ -66,28 +67,32 @@ export class GooglePayService {
 
     const supportedInstruments = [googlePayUPI, googlePayGlobal];
 
+    const orderTyped = order as any;
     const details = {
       total: {
         label: 'Total Amount',
         amount: {
-          currency: order.priceCurrency || 'INR',
-          value: String(order.totalPrice),
+          currency: orderTyped.priceCurrency || 'INR',
+          value: String(orderTyped.totalPrice),
         },
       },
-      displayItems: order.orderedItem.map(item => ({
-        label: item.orderedItem.name || 'Product',
-        amount: {
-          currency: order.priceCurrency || 'INR',
-          value: String(parseFloat(String((item.orderedItem.offers as any)?.price || 0)) * item.orderQuantity),
-        },
-      })),
+      displayItems: SchemaExtractor.getArray(order.orderedItem).map((item: any) => {
+        const { price } = SchemaExtractor.extractPrice(item.orderedItem?.offers);
+        return {
+          label: SchemaExtractor.getFirst(item.orderedItem?.name) || 'Product',
+          amount: {
+            currency: orderTyped.priceCurrency || 'INR',
+            value: String(parseFloat(price) * (item.orderQuantity || 1)),
+          },
+        };
+      }),
     };
 
     try {
       const request = new (window as any).PaymentRequest(supportedInstruments, details);
 
       // Attempt to use UPI if available, else fall back to default behavior
-      const canPayUPI = await request.canMakePayment();
+      await request.canMakePayment();
 
       const response = await request.show();
       // Handle the payment response

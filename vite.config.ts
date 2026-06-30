@@ -5,7 +5,7 @@ export default defineConfig({
   build: {
     lib: {
       entry: resolve(__dirname, 'src/main.ts'),
-      name: 'AntinnaEngine',
+      name: 'AntinnaEngineLib',
       fileName: (format) => `antinna-engine.${format}.js`,
       formats: ['iife', 'es'],
     },

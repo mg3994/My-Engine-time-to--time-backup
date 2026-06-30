@@ -3,14 +3,17 @@
 <head>
     <title>Blogger Test</title>
     <style>
+        :root { --accent: #e67e22; --text: #333; --card: #fff; --bg: #f8f9fa; }
         .hidden { display: none !important; }
         .active { display: block !important; }
         .cart-fab { position: fixed; bottom: 20px; right: 20px; width: 50px; height: 50px; background: orange; border-radius: 50%; }
         .cart-count { background: red; color: white; border-radius: 50%; padding: 2px 6px; }
-        .cart-drawer { position: fixed; right: -400px; top: 0; width: 300px; height: 100%; background: white; transition: right 0.3s; }
+        .cart-drawer { position: fixed; right: -400px; top: 0; width: 300px; height: 100%; background: white; transition: right 0.3s; z-index: 5000; }
         .cart-drawer.active { right: 0; }
-        .modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; }
+        .modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; z-index: 4000; }
         .modal-backdrop.active { display: block; }
+        .h-card { border: 1px solid #ddd; padding: 15px; margin-bottom: 10px; border-radius: 8px; }
+        .v-btn { background: #e67e22; color: #fff; border: none; padding: 10px; cursor: pointer; border-radius: 5px; }
     </style>
 </head>
 <body>
@@ -25,9 +28,7 @@
         <div id="p-price"></div>
         <div id="stock-badge-container"></div>
         <div id="p-variants"></div>
-        <div id="p-specs">
-            <div id="specs-list"></div>
-        </div>
+        <div id="p-specs"><div id="specs-list"></div></div>
         <div class="qty-controls">
             <button id="qty-minus">-</button>
             <span id="qty-val">1</span>
@@ -64,11 +65,7 @@
 
     <div id="loc-modal-backdrop" class="modal-backdrop">
         <div class="modal-content">
-            <button class="loc-btn" onclick="window.LocationRenderer.handleRequestLocation()">
-                <span>🎯</span> Detect My Location
-            </button>
-            <input id="modal-pin-input" />
-            <button onclick="LocationRenderer.handleSetPin()">Set Pin</button>
+            <button class="loc-btn" onclick="window.LocationRenderer.hideModal()">Close</button>
         </div>
     </div>
     <input id="loc-display-v2" />
@@ -78,168 +75,48 @@
         {
           "@context": "https://schema.org",
           "@type": "ProductGroup",
-          "name": "AuraGlow Smart Thermostat Series",
-          "description": "Premium 100% organic cotton crewneck collection featuring various colors, sizes, and optional personalization services.",
-          "brand": {
-            "@type": "Brand",
-            "name": "Antinna Pro Max"
-          },
-          "image": [
-            "https://picsum.dev/800/600?blur=5",
-            "https://picsum.dev/200/200?static"
-          ],
+          "name": "Elite Crewneck Collection",
+          "description": "Premium organic cotton collection.",
           "productGroupID": "elite-crew-series",
-          "variesBy": [
-            "https://schema.org/color",
-            "https://schema.org/material",
-            "https://schema.org/size"
-          ],
+          "variesBy": ["size"],
           "hasVariant": [
             {
               "@type": "Product",
               "name": "Elite Crewneck - Midnight Blue (Large)",
               "sku": "EC-MB-L-001",
-              "gtin13": "8901234567890",
-              "color": "Midnight Blue",
               "size": "Large",
-              "model": "TITAN-2024-XL",
-              "material": "Organic Cotton",
-              "image": [
-                "https://picsum.dev/300/200?static",
-                "https://images.unsplash.com/photo-1618354691373-d851c5c3a990?w=800&q=80"
-              ],
-              "addOn": [
-                {
-                  "@type": "Offer",
-                  "price": "499.00",
-                  "priceCurrency": "INR",
-                  "eligibleQuantity": {
-                    "@type": "QuantitativeValue",
-                    "value": 1,
-                    "minValue": 1,
-                    "maxValue": 3,
-                    "unitCode": "C62"
-                  },
-                  "itemOffered": {
-                    "@type": "Service",
-                    "name": "Premium Gift Wrapping",
-                    "image": "https://picsum.dev/300/200?gift-wrap"
-                  }
-                },
-                {
-                  "@type": "Offer",
-                  "price": "899.00",
-                  "priceCurrency": "INR",
-                  "eligibleQuantity": {
-                    "@type": "QuantitativeValue",
-                    "value": 1,
-                    "minValue": 0,
-                    "maxValue": 1,
-                    "unitCode": "C62"
-                  },
-                  "itemOffered": {
-                    "@type": "Product",
-                    "name": "Matching Cotton Cap",
-                    "sku": "CAP-001",
-                    "image": "https://picsum.dev/300/200?cap"
-                  }
-                },
-                {
-                  "@type": "Offer",
-                  "price": "199.00",
-                  "priceCurrency": "INR",
-                  "eligibleQuantity": {
-                    "@type": "QuantitativeValue",
-                    "minValue": 1,
-                    "maxValue": 10,
-                    "unitCode": "C62"
-                  },
-                  "itemOffered": {
-                    "@type": "Service",
-                    "name": "Custom Embroidery Characters"
-                  }
-                }
-              ],
-              "weight": {
-                "@type": "QuantitativeValue",
-                "value": "0.35",
-                "unitCode": "KGM"
-              },
-              "height": {
-                "@type": "QuantitativeValue",
-                "value": "75",
-                "unitCode": "CMT"
-              },
-              "width": {
-                "@type": "QuantitativeValue",
-                "value": "55",
-                "unitCode": "CMT"
-              },
               "offers": {
                 "@type": "Offer",
                 "price": "38851.00",
                 "priceCurrency": "INR",
                 "availability": "https://schema.org/InStock",
-                "itemCondition": "https://schema.org/NewCondition",
-                "inventoryLevel": {
-                  "@type": "QuantitativeValue",
-                  "value": "150",
-                  "unitCode": "C62"
-                },
-                "deliveryLeadTime": {
-                  "@type": "QuantitativeValue",
-                  "value": "2",
-                  "unitCode": "DAY"
-                },
-                "acceptedPaymentMethod": [
-                  "https://schema.org/CreditCard",
-                  "https://schema.org/Cash"
-                ],
                 "seller": {
-                  "@type": "LocalBusiness",
-                  "name": "Downtown Threads - New Delhi Flagship",
-                  "telephone": "+91-11-23456789",
-                  "email": "contact@antinna-industrial.com",
-                  "address": {
-                    "@type": "PostalAddress",
-                    "streetAddress": "148 W 51st St",
-                    "addressLocality": "New York",
-                    "addressRegion": "NY",
-                    "postalCode": "127310",
-                    "addressCountry": "US"
-                  },
-                  "geo": {
-                    "@type": "GeoCoordinates",
-                    "latitude": "28.6315",
-                    "longitude": "77.2167"
-                  },
-                  "sameAs": [
-                    "https://www.facebook.com/antinnapro",
-                    "https://www.instagram.com/antinnapro",
-                    "https://linkedin.com/company/antinna"
-                  ],
+                  "@type": "Organization",
+                  "name": "Antinna Shop",
                   "hasOfferCatalog": {
                     "@type": "OfferCatalog",
-                    "name": "Personalization Services",
-                    "itemListElement": {
-                      "@type": "Offer",
-                      "itemOffered": {
-                        "@type": "Service",
-                        "name": "Custom Embroidery",
-                        "image": "https://picsum.dev/300/200?static"
-                      },
-                      "price": "38851.00",
-                      "priceCurrency": "INR",
-                      "availability": "https://schema.org/InStock",
-                      "advanceBookingRequirement": {
-                        "@type": "QuantitativeValue",
-                        "value": "24",
-                        "unitCode": "HUR"
-                      }
-                    }
+                    "itemListElement": [
+                        {
+                            "@type": "Offer",
+                            "itemOffered": { "@type": "Service", "name": "General Maintenance" },
+                            "price": "999", "priceCurrency": "INR"
+                        }
+                    ]
                   }
                 }
-              }
+              },
+              "addOn": [
+                {
+                  "@type": "Offer",
+                  "price": "499.00",
+                  "priceCurrency": "INR",
+                  "eligibleQuantity": { "@type": "QuantitativeValue", "minValue": 1, "maxValue": 3 },
+                  "itemOffered": {
+                    "@type": "Service",
+                    "name": "Premium Gift Wrapping"
+                  }
+                }
+              ]
             }
           ]
         }

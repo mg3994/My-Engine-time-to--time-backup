@@ -94,6 +94,7 @@ export class UIManager {
       .antinna-country-flag { font-size: 1.2rem; }
       .antinna-country-name { flex: 1; color: var(--text); }
       .antinna-country-code { color: var(--accent); font-weight: 800; font-size: 0.85rem; }
+      .section-title { font-size: 1.1rem; font-weight: 800; margin: 25px 0 15px 0; padding-bottom: 8px; border-bottom: 2px solid var(--accent); display: inline-block; }
     `;
     document.head.appendChild(style);
   }

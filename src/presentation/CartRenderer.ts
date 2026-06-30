@@ -101,12 +101,12 @@ export class CartRenderer {
               ${bookingReq ? `<div style="color:var(--accent); font-size:0.7rem; font-weight:700;">Booking: ${bookingReq}</div>` : ''}
               <div style="color:var(--accent); font-weight:800; font-size:0.85rem; margin-top:4px;">${currency} ${price}</div>
               <div style="display:flex; align-items:center; gap:12px; margin-top:10px;">
-                 <button class="qty-btn" style="width:24px; height:24px; font-size:0.8rem;" ${!isOrderable ? 'disabled' : ''} onclick="updateQty(${idx},-1); CartRenderer.showModal();">-</button>
+                 <button class="qty-btn" style="width:24px; height:24px; font-size:0.8rem;" ${!isOrderable ? 'disabled' : ''} onclick="CartManager.updateQty(${idx},-1); CartRenderer.showModal();">-</button>
                  <span style="font-weight:800;">${item.orderQuantity || 1}</span>
-                 <button class="qty-btn" style="width:24px; height:24px; font-size:0.8rem;" ${(!isOrderable || (item._constraints?.maxValue !== null && (item.orderQuantity || 1) >= item._constraints.maxValue)) ? 'disabled' : ''} onclick="updateQty(${idx},1); CartRenderer.showModal();">+</button>
+                 <button class="qty-btn" style="width:24px; height:24px; font-size:0.8rem;" ${(!isOrderable || (item._constraints?.maxValue !== null && (item.orderQuantity || 1) >= item._constraints.maxValue)) ? 'disabled' : ''} onclick="CartManager.updateQty(${idx},1); CartRenderer.showModal();">+</button>
               </div>
            </div>
-           <button onclick="removeItem(${idx}); CartRenderer.showModal();" style="background:none;border:none;color:#ff3b30;cursor:pointer;font-size:1.2rem; padding:10px;">×</button>
+           <button onclick="CartManager.removeItem(${idx}); CartRenderer.showModal();" style="background:none;border:none;color:#ff3b30;cursor:pointer;font-size:1.2rem; padding:10px;">×</button>
         </div>
       `;
     }).join("") || '<div style="text-align:center; padding:50px; opacity:0.5; font-weight:700;">Bag is empty</div>';

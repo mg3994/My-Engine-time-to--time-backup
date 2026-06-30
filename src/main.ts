@@ -50,56 +50,16 @@ export class App {
   }
 
   private detectContext(): void {
-      const path = window.location.pathname;
-      const searchParams = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(window.location.search);
+    const labels = params.get('labels');
+    if (labels) this.currentLabels = labels.split(',');
 
-      if (path.includes('/search/label/')) {
-          const label = path.split('/search/label/')[1].split('?')[0];
-          if (label) this.currentLabels.push(decodeURIComponent(label));
-      }
-
-      const q = searchParams.get('q');
-      if (q) {
-          this.currentSearchQuery = q;
-
-          // Patterns for Location cleaning
-          const patterns = [
-              /"postalCode":\s*"([^"]+)"/,
-              /postalCode:\s*([^|\s]+)/,
-              /"addressLocality":\s*"([^"]+)"/,
-              /addressLocality:\s*([^|\s]+)/
-          ];
-
-          let cleanedQ = q;
-          patterns.forEach(p => {
-              cleanedQ = cleanedQ.replace(p, '').trim();
-          });
-
-          this.displaySearchQuery = cleanedQ;
-          this.searchKeywordsOnly = cleanedQ.replace(/label:[^|\s]+/g, '').trim();
-
-          const labelRegex = /label:([^|\s]+)/g;
-          let match;
-          while ((match = labelRegex.exec(q)) !== null) {
-              if (match[1]) {
-                  const labelName = decodeURIComponent(match[1].replace(/_/g, ' '));
-                  if (!this.currentLabels.includes(labelName)) {
-                      this.currentLabels.push(labelName);
-                  }
-              }
-          }
-      }
-  }
-
-  private formatLocationQuery(): string {
-      const loc = this.LocationManager.getData();
-      if (loc.pin) {
-          return `"postalCode": "${loc.pin}"`;
-      }
-      if (loc.city) {
-          return `"addressLocality": "${loc.city}"`;
-      }
-      return "";
+    const query = params.get('q');
+    if (query) {
+        this.displaySearchQuery = query;
+        this.searchKeywordsOnly = query.replace(/^search:/, '').trim();
+        this.currentSearchQuery = this.searchKeywordsOnly;
+    }
   }
 
   private exposeGlobals(): void {
@@ -122,6 +82,7 @@ export class App {
     (window as any).showToast = (m: string, t: any) => UIManager.showToast(m, t);
     (window as any).loadMorePosts = () => this.loadMorePosts();
     (window as any).refreshCartData = () => this.refreshCartData();
+
     (window as any).addItem = (item: any, seller: any, variants: any, quantity: any, parentKey: any) => {
         this.CartManager.addItem(item, seller, variants, quantity, parentKey);
         this.CartRenderer.updateUI();
@@ -134,6 +95,7 @@ export class App {
         this.CartManager.updateQty(idx, delta);
         this.CartRenderer.updateUI();
     };
+
     (window as any).startCheckout = () => this.startCheckout();
     (window as any).showOrderSummary = () => this.showOrderSummary();
     (window as any).showGeoVerification = () => this.showGeoVerification();
@@ -162,298 +124,100 @@ export class App {
       }
   }
 
-  private updateCategoryLinks(): void {
-      const keywords = this.searchKeywordsOnly.trim();
-      const locString = this.formatLocationQuery();
-
-      if (!keywords && !locString) return;
-
-      const catLinks = document.querySelectorAll<HTMLAnchorElement>('.cat-link');
-      catLinks.forEach(link => {
-          const text = link.textContent?.trim() || '';
-          let finalQuery = '';
-
-          if (text.toUpperCase() === 'ALL') {
-              finalQuery = `${keywords} ${locString}`.trim();
-          } else {
-              finalQuery = `label:${text} ${keywords} ${locString}`.trim();
-          }
-
-          const prettyQuery = encodeURIComponent(finalQuery)
-            .replace(/%20/g, ' ')
-            .replace(/%3A/g, ':');
-
-          link.href = `/search?q=${prettyQuery}`;
-      });
-  }
-
-  private highlightActiveLabels(): void {
-      const catLinks = document.querySelectorAll('.cat-link');
-      if (this.currentLabels.length > 0) {
-          catLinks.forEach(link => {
-              const text = link.textContent?.trim();
-              if (text?.toUpperCase() === 'ALL') {
-                  link.classList.remove('active');
-                  return;
-              }
-
-              const isMatch = this.currentLabels.some(label => {
-                  return text === label;
-              });
-              if (isMatch) link.classList.add('active');
-          });
-      }
-  }
-
   private setupEventListeners(): void {
-    const qtyPlus = UIManager.el("qty-plus");
     const qtyMinus = UIManager.el("qty-minus");
+    const qtyPlus = UIManager.el("qty-plus");
     const addBtn = UIManager.el("add-to-cart-btn");
-    const searchForm = UIManager.el<HTMLFormElement>("search-form");
-
-    if (qtyPlus) qtyPlus.onclick = () => {
-      const limits = (window as any).currentQuantityLimits;
-      if (limits?.maxValue !== null && this.state.quantity >= limits.maxValue) {
-          UIManager.showToast(`Maximum limit of ${limits.maxValue} reached`, "error");
-          return;
-      }
-      this.state.quantity++;
-      UIManager.setContent("qty-val", String(this.state.quantity));
-      this.ProductRenderer.updateQtyButtons();
-    };
 
     if (qtyMinus) qtyMinus.onclick = () => {
-      if (this.state.quantity > 1) {
-        this.state.quantity--;
+        this.state.quantity = Math.max(1, this.state.quantity - 1);
         UIManager.setContent("qty-val", String(this.state.quantity));
         this.ProductRenderer.updateQtyButtons();
-      }
     };
-
+    if (qtyPlus) qtyPlus.onclick = () => {
+        this.state.quantity++;
+        UIManager.setContent("qty-val", String(this.state.quantity));
+        this.ProductRenderer.updateQtyButtons();
+    };
     if (addBtn) addBtn.onclick = () => this.handleAddToCart();
 
+    const cartFab = UIManager.el("cart-fab");
+    if (cartFab) cartFab.onclick = () => this.CartRenderer.showModal();
 
-    if (searchForm) {
-      searchForm.onsubmit = (e) => {
-        e.preventDefault();
-        const qInput = UIManager.el<HTMLInputElement>("search-q");
-        if (!qInput) return;
-
-        const baseQuery = qInput.value.trim();
-        const locString = this.formatLocationQuery();
-
-        // Validate: At least one must be present
-        if (!baseQuery && !locString) {
-            UIManager.showToast("Please enter a query or select location", "error");
-            return;
-        }
-
-        const combinedQuery = (locString && !baseQuery.includes(locString))
-            ? `${baseQuery} ${locString}`.trim()
-            : baseQuery;
-
-        const searchUrl = searchForm.getAttribute('action') || '/search';
-
-        let finalQuery = encodeURIComponent(combinedQuery)
-            .replace(/%3A/g, ':')
-            .replace(/%7C/g, '|');
-
-        window.location.href = `${searchUrl}?q=${finalQuery}`;
-      };
-    }
+    const backdrop = UIManager.el("cart-modal-backdrop");
+    if (backdrop) backdrop.onclick = () => this.CartRenderer.hideModal();
   }
 
-  private loadProductData(): void {
-    setTimeout(() => {
-      const rawBody = UIManager.el("post-body-raw");
-      if (rawBody) {
-        const data = SchemaExtractor.extractJsonLd<any>(rawBody.textContent || "");
-        if (data) {
-          this.state.product = data;
-          this.ProductRenderer.render(data, this.state, (attr, val) => {
-            this.state.selectedVariants[attr] = val;
-            this.state.lastClickedAttribute = attr;
-            this.ProductRenderer.render(this.state.product!, this.state, () => {});
-          });
-          if (data.offers?.seller || data.seller || data.provider) {
-              this.ProductRenderer.renderSeller(data.offers?.seller || data.seller || data.provider);
-          }
-        }
-      }
-      UIManager.toggleClass("#initializing-state", "hidden", true);
-      UIManager.toggleClass("#carousel-section", "hidden", false);
-      UIManager.toggleClass("#details-section", "hidden", false);
-    }, 100);
-  }
-
-  private async loadGridData(): Promise<void> {
-    const grid = UIManager.el("app-grid");
-    if (!grid) return;
-
-    const { entries } = await this.BloggerDataService.fetchFeedData(50, 1, this.currentLabels, this.currentSearchQuery);
-
-    if (grid.children.length === 0) {
-        this.renderEntriesToGrid(entries, grid);
-    } else {
-        const cards = grid.querySelectorAll<HTMLAnchorElement>(".card");
-        cards.forEach(card => {
-          const url = card.href.split("?")[0].split("#")[0];
-          const entry = entries.find(e => {
-              const alternateLink = e.link.find((l: any) => l.rel === "alternate")?.href || "";
-              return alternateLink.toLowerCase().includes(url.toLowerCase());
-          });
-          const data = entry
-            ? this.BloggerDataService.extractSchemaFromEntry(entry)
-            : SchemaExtractor.extractJsonLd<any>(card.querySelector(".grid-data")?.textContent || "");
-
-          if (data) {
-            this.renderGridCard(card, data);
-          }
+  public async loadProductData(): Promise<void> {
+    const raw = UIManager.el("post-body-raw");
+    if (!raw) return;
+    const p = SchemaExtractor.extractJsonLd<any>(raw.innerHTML);
+    if (p) {
+        this.state.product = p;
+        this.ProductRenderer.render(p, this.state, (a, v) => {
+          this.state.selectedVariants[a] = v;
+          this.state.lastClickedAttribute = a;
+          this.ProductRenderer.render(p, this.state, (a, v) => {});
         });
+        UIManager.toggleClass("#initializing-state", "hidden", true);
+        UIManager.toggleClass("#carousel-section", "hidden", false);
+        UIManager.toggleClass("#details-section", "hidden", false);
     }
   }
 
-  public async loadMorePosts(): Promise<void> {
-    const grid = UIManager.el("app-grid");
-    if (!grid) return;
+  public async loadGridData(): Promise<void> {
+      const grid = UIManager.el("app-grid");
+      if (!grid) return;
 
-    this.gridStartIndex += this.gridPageSize;
-    const { entries, totalResults } = await this.BloggerDataService.fetchFeedData(this.gridPageSize, this.gridStartIndex, this.currentLabels, this.currentSearchQuery);
+      const { entries, totalResults } = await this.BloggerDataService.fetchFeedData(this.gridPageSize, this.gridStartIndex, this.currentLabels, this.currentSearchQuery);
+      this.renderEntriesToGrid(entries, grid);
 
-    this.renderEntriesToGrid(entries, grid);
-
-    if (this.gridStartIndex + this.gridPageSize > totalResults) {
-      UIManager.el("load-more-btn")?.classList.add("hidden");
-    }
+      if (this.gridStartIndex + this.gridPageSize > totalResults) {
+          UIManager.el("load-more-btn")?.classList.add("hidden");
+      }
   }
 
   private renderEntriesToGrid(entries: any[], grid: HTMLElement): void {
       entries.forEach(entry => {
-        const data = this.BloggerDataService.extractSchemaFromEntry(entry);
-        if (data) {
-          const url = entry.link.find((l: any) => l.rel === "alternate")?.href || "#";
-          const card = document.createElement("a");
-          card.className = "card";
-          card.href = url;
-          const firstImage = SchemaExtractor.getFirst(data.image);
-          const imageUrl = (firstImage as any)?.url || firstImage || 'https://via.placeholder.com/400x300?text=Antinna';
-          card.innerHTML = `
-            <div class="card-img-wrapper">
-               <div class="card-img-scroll" onscroll="AntinnaEngine.syncDots(this)">
-                  <img class="card-img" src="${imageUrl}" loading="lazy"/>
-               </div>
-               <div class="card-dots"></div>
-            </div>
-            <div class="card-body">
-              <div class="card-badge">Loading...</div>
-              <h3 class="card-title">${SchemaExtractor.getFirst(data.name) || "Untitled"}</h3>
-              <div class="card-price">--</div>
-            </div>
-          `;
-          grid.appendChild(card);
-          this.renderGridCard(card, data);
-        }
+          const p = this.BloggerDataService.extractSchemaFromEntry(entry);
+          if (p) {
+              const link = entry.link.find((l: any) => l.rel === "alternate")?.href || "#";
+              const card = document.createElement("a");
+              card.className = "card";
+              card.href = link;
+
+              const img = SchemaExtractor.getFirst(p.image);
+              const imgUrl = img?.url || img || "https://via.placeholder.com/400x300?text=Antinna";
+
+              card.innerHTML = `
+                <div class="card-img-container">
+                   <div class="card-img-scroll" onscroll="AntinnaEngine.syncDots(this)">
+                      <img class="card-img" src="${imgUrl}" loading="lazy"/>
+                   </div>
+                   <div class="card-dots"></div>
+                </div>
+                <div class="card-content">
+                    <div class="card-brand">${SchemaExtractor.getFirst(p.brand)?.name || SchemaExtractor.getFirst(p.brand) || ""}</div>
+                    <div class="card-name">${SchemaExtractor.getFirst(p.name)}</div>
+                    <div class="card-price">${SchemaExtractor.extractPrice(SchemaExtractor.getFirst(p.offers)).currency} ${SchemaExtractor.extractPrice(SchemaExtractor.getFirst(p.offers)).price}</div>
+                </div>
+              `;
+              grid.appendChild(card);
+              this.initCardCarousel(card, p);
+          }
       });
   }
 
-  public async refreshCartData(): Promise<void> {
-    this.CartRenderer.setLoading(true);
-    try {
-        const order = this.CartManager.getOrder();
-        const { entries } = await this.BloggerDataService.fetchFeedData(100, 1);
-
-        SchemaExtractor.getArray(order.orderedItem).forEach((item: any, idx) => {
-          const url = SchemaExtractor.getFirst(item.orderedItem?.url);
-          if (!url) return;
-
-          const entry = entries.find(e => {
-              const alternateLink = e.link.find((l: any) => l.rel === "alternate")?.href || "";
-              return alternateLink.toLowerCase().includes(url.toLowerCase().split('?')[0].split('#')[0]);
-          });
-
-          const data = entry ? this.BloggerDataService.extractSchemaFromEntry(entry) : null;
-          this.CartManager.updateItemDetails(idx, data);
-        });
-    } catch (e) {
-        console.error("Refresh failed", e);
-    } finally {
-        this.CartRenderer.setLoading(false);
-        this.CartRenderer.showModal();
-    }
-  }
-
-  private renderGridCard(card: HTMLElement, data: any): void {
-    const badge = card.querySelector(".card-badge");
-    const price = card.querySelector(".card-price");
-    const scroll = card.querySelector(".card-img-scroll");
-    const dots = card.querySelector(".card-dots");
-
-    const types = SchemaExtractor.getArray(data["@type"]);
-    const isBusiness = types.some(t => t === "LocalBusiness" || t === "Store" || t === "Organization");
-
-    if (badge) {
-        if (isBusiness) badge.textContent = 'Business';
-        else if (types.some(t => t === 'ProductGroup' || t === 'Product')) badge.textContent = 'Product';
-        else badge.textContent = 'Service';
-    }
-
-    if (price) {
-        if (isBusiness) {
-            price.textContent = SchemaExtractor.getFirst(data.telephone) || "Contact Us";
-        } else {
-            const variants = SchemaExtractor.getArray(data.hasVariant);
-            const variant = variants.length > 0 ? variants[0] : data;
-            const { price: p, currency } = SchemaExtractor.extractPrice(variant.offers || variant);
-            price.textContent = `${currency} ${p}`;
-        }
-    }
-
-    const imgs = SchemaExtractor.getArray(data.image);
+  private initCardCarousel(card: HTMLElement, p: any): void {
+    const imgs = SchemaExtractor.getArray(p.image);
+    const scroll = card.querySelector('.card-img-scroll');
+    const dots = card.querySelector('.card-dots');
     if (imgs[0] && scroll) {
       scroll.innerHTML = imgs.map((img: any) => `<img class="card-img" src="${img.url || img}" loading="lazy"/>`).join('');
       if (dots && imgs.length > 1) {
         dots.innerHTML = imgs.map((_: any, i: number) => `<div class="dot ${i === 0 ? 'active' : ''}"></div>`).join('');
       }
     }
-  }
-
-  private handleAddToCart(): void {
-    const p = this.state.product as any;
-    if (!p) return;
-
-    let variant = SchemaExtractor.findMatchingVariant(p, this.state.selectedVariants, this.state.lastClickedAttribute);
-
-    if (this.state.selectedPackage) {
-      variant = {
-        ...variant,
-        name: this.state.selectedPackage.itemOffered?.name || this.state.selectedPackage.name,
-        offers: {
-          price: this.state.selectedPackage.price,
-          priceCurrency: this.state.selectedPackage.priceCurrency
-        }
-      };
-    }
-
-    const itemToStore = { ...variant, url: window.location.href.split('?')[0].split('#')[0] };
-    const seller = SchemaExtractor.getFirst(itemToStore.offers?.seller) || SchemaExtractor.getFirst(p.seller) || p.provider;
-
-    this.CartManager.addItem(itemToStore, seller, this.state.selectedVariants, this.state.quantity);
-    this.CartRenderer.updateUI();
-    UIManager.showToast("Added to Bag", "success");
-  }
-
-  public goToSlide(i: number): void {
-    const inner = UIManager.el("carousel-inner");
-    const items = document.querySelectorAll(".carousel-item");
-    if (!inner || items.length === 0) return;
-
-    if (i < 0) i = items.length - 1;
-    if (i >= items.length) i = 0;
-
-    this.state.currentSlide = i;
-    inner.style.transform = `translateX(-${i * 100}%)`;
-
-    document.querySelectorAll(".thumb").forEach((t, x) => t.classList.toggle("active", x === i));
   }
 
   public syncDots(el: HTMLElement): void {
@@ -537,15 +301,84 @@ export class App {
       }
       loginModal.classList.add('active');
 
-      // Start polling for login success
       const checkLogin = setInterval(() => {
           if ((window as any).isLoggedIn) {
               clearInterval(checkLogin);
               loginModal?.classList.remove('active');
-              // Automatically proceed to next step
               this.startCheckout();
           }
       }, 1000);
+  }
+
+  public refreshCartData(): void {
+      this.CartRenderer.showModal();
+  }
+
+  public async loadMorePosts(): Promise<void> {
+    const grid = UIManager.el("app-grid");
+    if (!grid) return;
+    this.gridStartIndex += this.gridPageSize;
+    const { entries, totalResults } = await this.BloggerDataService.fetchFeedData(this.gridPageSize, this.gridStartIndex, this.currentLabels, this.currentSearchQuery);
+    this.renderEntriesToGrid(entries, grid);
+    if (this.gridStartIndex + this.gridPageSize > totalResults) {
+        UIManager.el("load-more-btn")?.classList.add("hidden");
+    }
+  }
+
+  public goToSlide(i: number): void {
+    const inner = UIManager.el("carousel-inner");
+    const items = document.querySelectorAll(".carousel-item");
+    if (!inner || items.length === 0) return;
+    if (i < 0) i = items.length - 1;
+    if (i >= items.length) i = 0;
+    this.state.currentSlide = i;
+    inner.style.transform = `translateX(-${i * 100}%)`;
+    document.querySelectorAll(".thumb").forEach((t, idx) => t.classList.toggle("active", idx === i));
+  }
+
+  public updateCategoryLinks(): void {
+      const links = document.querySelectorAll<HTMLAnchorElement>('.category-link');
+      links.forEach(l => {
+          const label = l.dataset.label;
+          if (label) {
+              const current = new URLSearchParams(window.location.search);
+              current.set('labels', label);
+              l.href = '?' + current.toString();
+          }
+      });
+  }
+
+  public highlightActiveLabels(): void {
+      const labels = this.currentLabels;
+      document.querySelectorAll<HTMLElement>('.category-link').forEach(l => {
+          const lab = l.dataset.label;
+          if (lab && labels.includes(lab)) l.classList.add('active');
+      });
+  }
+
+  private handleAddToCart(): void {
+    const p = this.state.product as any;
+    if (!p) return;
+
+    let variant = SchemaExtractor.findMatchingVariant(p, this.state.selectedVariants, this.state.lastClickedAttribute);
+
+    if (this.state.selectedPackage) {
+      variant = {
+        ...variant,
+        name: this.state.selectedPackage.itemOffered?.name || this.state.selectedPackage.name,
+        offers: {
+          price: this.state.selectedPackage.price,
+          priceCurrency: this.state.selectedPackage.priceCurrency
+        }
+      };
+    }
+
+    const itemToStore = { ...variant, url: window.location.href.split('?')[0].split('#')[0] };
+    const seller = SchemaExtractor.getFirst(itemToStore.offers?.seller) || SchemaExtractor.getFirst(p.seller) || p.provider;
+
+    this.CartManager.addItem(itemToStore, seller, this.state.selectedVariants, this.state.quantity);
+    this.CartRenderer.updateUI();
+    UIManager.showToast("Added to Bag", "success");
   }
 }
 

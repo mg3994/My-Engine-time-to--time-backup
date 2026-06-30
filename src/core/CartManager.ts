@@ -38,7 +38,7 @@ export class CartManager {
       orderedItems.forEach((item: any) => {
           const key = item.itemKey || this.generateItemKey(item.orderedItem, item._selectedVariants);
           if (uniqueItems[key]) {
-              uniqueItems[key].orderQuantity += Number(item.orderQuantity || 0);
+              uniqueItems[key].orderQuantity = Number(uniqueItems[key].orderQuantity || 0) + Number(item.orderQuantity || 0);
           } else {
               item.itemKey = key;
               uniqueItems[key] = item;
@@ -80,16 +80,14 @@ export class CartManager {
 
   addItem(item: Product | Service, seller?: Organization, selectedVariants?: Record<string, string>, quantity: number = 1, parentItemKey?: string): void {
     const availability = SchemaExtractor.extractAvailability(item.offers);
-    if (availability === "https://schema.org/OutOfStock") {
-        return;
-    }
+    if (availability === "https://schema.org/OutOfStock") return;
 
     if (!SchemaExtractor.getFirst(item.url)) {
         item.url = window.location.href.split('?')[0].split('#')[0];
     }
 
     const itemKey = this.generateItemKey(item, selectedVariants);
-    const orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
+    let orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
 
     if (parentItemKey) {
         const parentExists = orderedItems.some((oi: any) => oi.itemKey === parentItemKey);
@@ -100,26 +98,24 @@ export class CartManager {
         }
     }
 
-    const existing = orderedItems.find(
-      (oi: any) => oi.itemKey === itemKey
-    );
-
+    const existing = orderedItems.find((oi: any) => oi.itemKey === itemKey);
     const { minValue, maxValue } = SchemaExtractor.extractEligibleQuantity(item);
-    const initialQty = Math.max(Number(quantity), minValue || 1);
+    const qtyToAdd = Number(quantity);
 
     if (existing) {
-      const currentQty = Number((existing as any).orderQuantity || 0);
-      const newQty = currentQty + Number(quantity);
+      const currentQty = Number(existing.orderQuantity || 0);
+      const newQty = currentQty + qtyToAdd;
 
       if (maxValue !== null && newQty > maxValue) {
           const UIManager = (window as any).UIManager;
           if (UIManager) UIManager.showToast(`Maximum limit of ${maxValue} reached for this item`, "error");
-          (existing as any).orderQuantity = maxValue;
+          existing.orderQuantity = maxValue;
       } else {
-          (existing as any).orderQuantity = newQty;
+          existing.orderQuantity = newQty;
       }
     } else {
       const itemCopy = JSON.parse(JSON.stringify(item));
+      const initialQty = Math.max(qtyToAdd, minValue || 1);
       const finalInitialQty = maxValue !== null ? Math.min(initialQty, maxValue) : initialQty;
 
       orderedItems.push({
@@ -164,7 +160,7 @@ export class CartManager {
   }
 
   removeItem(index: number): void {
-    const orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
+    let orderedItems = SchemaExtractor.getArray(this.order.orderedItem);
     if (index < 0 || index >= orderedItems.length) return;
 
     const removedItem = orderedItems[index] as any;
@@ -173,12 +169,10 @@ export class CartManager {
     // Remove the item itself
     orderedItems.splice(index, 1);
 
-    // Cascading removal for add-ons
-    const remainingItems = orderedItems.filter((item: any) => {
-        return item.parentItemKey !== removedItemKey;
-    });
+    // Cascading removal for add-ons that depend on this item
+    orderedItems = orderedItems.filter((item: any) => item.parentItemKey !== removedItemKey);
 
-    this.order.orderedItem = remainingItems;
+    this.order.orderedItem = orderedItems;
     this.saveToStorage();
   }
 
@@ -215,14 +209,13 @@ export class CartManager {
       let freshMatch = null;
       const cartItem = item.orderedItem;
       const dataSources = Array.isArray(freshBaseData) ? freshBaseData : [freshBaseData];
-
       const normalizedCartName = SchemaExtractor.normalizeName(cartItem.name);
 
       for (const source of dataSources) {
           const allServices = SchemaExtractor.findAllServices(source);
           for (const serviceOffer of allServices) {
-              const item = serviceOffer.itemOffered || serviceOffer;
-              const name = SchemaExtractor.getFirst(item.name) || SchemaExtractor.getFirst(serviceOffer.name);
+              const sItem = serviceOffer.itemOffered || serviceOffer;
+              const name = SchemaExtractor.getFirst(sItem.name) || SchemaExtractor.getFirst(serviceOffer.name);
               if (SchemaExtractor.normalizeName(name as string) === normalizedCartName) {
                   freshMatch = serviceOffer;
                   break;

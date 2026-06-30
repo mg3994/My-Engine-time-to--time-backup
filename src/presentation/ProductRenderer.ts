@@ -2,6 +2,7 @@ import { Product, ProductGroup, Service, Offer, Organization } from '../types/sc
 import { AppState } from '../types/app';
 import { UIManager } from './UIManager';
 import { SchemaExtractor } from '../core/SchemaExtractor';
+import { CartManager } from '../core/CartManager';
 
 export class ProductRenderer {
   render(p: Product | ProductGroup | Service | any, state: AppState, onVariantChange: (attr: string, val: string) => void): void {
@@ -51,7 +52,6 @@ export class ProductRenderer {
         this.renderVariants(p, state, onVariantChange);
         this.renderSpecs(variant, p);
 
-        // Use class selector since it is a class in XML
         UIManager.toggleClass(".qty-controls", "hidden", isPrimaryService);
         UIManager.toggleClass("#add-to-cart-btn", "hidden", false);
 
@@ -165,7 +165,6 @@ export class ProductRenderer {
           container.after(hint);
       }
 
-      // Update actual buttons via App state (handled in main.ts)
       (window as any).currentQuantityLimits = { minValue, maxValue };
       this.updateQtyButtons();
   }
@@ -333,11 +332,7 @@ export class ProductRenderer {
         if (k) h += `<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(0,0,0,0.05);"><span style="opacity:0.6;">${l}</span><span style="font-weight:700;">${k}</span></div>`;
       }
 
-      // Additional Properties
-      const addProps = [
-          ...SchemaExtractor.getArray(p.additionalProperty),
-          ...SchemaExtractor.getArray(variant.additionalProperty)
-      ];
+      const addProps = SchemaExtractor.getArray(p.additionalProperty).concat(SchemaExtractor.getArray(variant.additionalProperty));
       addProps.forEach(prop => {
           const name = SchemaExtractor.getFirst(prop.name);
           const val = SchemaExtractor.getFirst(prop.value);
@@ -384,13 +379,9 @@ export class ProductRenderer {
     const titleEl = otherSec?.querySelector('.section-title');
     if (!otherSec || !otherList) return;
 
-    if (!s) {
-        return;
-    }
+    if (!s) return;
 
     let svcs = SchemaExtractor.findAllServices(s);
-
-    // Fallback: search in p as well
     if (p !== s) {
         const pSvcs = SchemaExtractor.findAllServices(p);
         pSvcs.forEach(ps => {
@@ -400,7 +391,6 @@ export class ProductRenderer {
         });
     }
 
-    // Filter out items already shown in Add-ons
     const excludeNames = excludeItems.map(item => SchemaExtractor.getFirst((item.itemOffered || item).name));
     svcs = svcs.filter(svc => {
         const name = SchemaExtractor.getFirst((svc.itemOffered || svc).name);
@@ -409,12 +399,10 @@ export class ProductRenderer {
 
     if (svcs.length > 0) {
       otherSec.style.display = "block";
-
       if (titleEl) {
           const isBusiness = p["@type"] === "LocalBusiness" || p["@type"] === "Store" || p["@type"] === "Organization";
           titleEl.textContent = isBusiness ? "Deals In / Our Services" : "Optional Product-Related Services";
       }
-
       otherList.innerHTML = this.generateServiceCardsHtml(svcs, p, s, false);
     } else {
       otherSec.style.display = "none";
@@ -465,7 +453,7 @@ export class ProductRenderer {
             const engine = (window as any).AntinnaEngine;
             const variant = SchemaExtractor.findMatchingVariant(engine.state.product, engine.state.selectedVariants, engine.state.lastClickedAttribute);
             const variantWithUrl = { ...variant, url: window.location.href.split('?')[0].split('#')[0] };
-            const parentKey = engine.CartManager.generateItemKey(variantWithUrl, engine.state.selectedVariants);
+            const parentKey = CartManager.generateItemKey(variantWithUrl, engine.state.selectedVariants);
             parentKeyParam = `'${parentKey}'`;
         }
 
